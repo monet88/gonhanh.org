@@ -1,19 +1,5 @@
 import SwiftUI
 
-// MARK: - Settings Keys
-
-private enum SettingsKey {
-    static let enabled = "gonhanh.enabled"
-    static let method = "gonhanh.method"
-}
-
-// MARK: - Input Mode
-
-enum InputMode: Int {
-    case telex = 0
-    case vni = 1
-}
-
 // MARK: - Settings View
 
 struct SettingsView: View {
@@ -23,8 +9,13 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Header
-            Text("⚡ GoNhanh")
-                .font(.system(size: 24, weight: .bold))
+            HStack {
+                Image(systemName: "keyboard.fill")
+                    .font(.title2)
+                    .foregroundColor(.accentColor)
+                Text(AppMetadata.name)
+                    .font(.system(size: 22, weight: .bold))
+            }
 
             Divider()
 
@@ -33,15 +24,17 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
 
             // Mode selection
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Chế độ gõ")
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Kiểu gõ")
                     .font(.headline)
 
-                Picker("", selection: $mode) {
-                    Text("Telex (aw, ow, w, s, f, r, x, j)").tag(InputMode.telex)
-                    Text("VNI (a8, o9, 1-5)").tag(InputMode.vni)
+                ForEach(InputMode.allCases, id: \.rawValue) { inputMode in
+                    ModeRadioButton(
+                        mode: inputMode,
+                        isSelected: mode == inputMode,
+                        onSelect: { mode = inputMode }
+                    )
                 }
-                .pickerStyle(.radioGroup)
             }
 
             Spacer()
@@ -63,7 +56,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 400, height: 300)
+        .frame(width: 400, height: 320)
         .onAppear {
             loadSettings()
         }
@@ -91,9 +84,51 @@ struct SettingsView: View {
         RustBridge.setEnabled(enabled)
         RustBridge.setMethod(mode.rawValue)
 
+        // Notify menu bar to update
+        NotificationCenter.default.post(name: .settingsChanged, object: nil)
+
         NSApp.keyWindow?.close()
     }
 }
+
+// MARK: - Mode Radio Button
+
+struct ModeRadioButton: View {
+    let mode: InputMode
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .foregroundColor(isSelected ? .accentColor : .secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(mode.name)
+                        .font(.body)
+                        .foregroundColor(.primary)
+
+                    Text(mode.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Notifications
+
+extension Notification.Name {
+    static let settingsChanged = Notification.Name("settingsChanged")
+}
+
+// MARK: - Preview
 
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
