@@ -295,7 +295,7 @@ struct PermissionStep: View {
         case .granted:
             return "Đã cấp quyền!"
         case .needsRestart:
-            return "Cần khởi động lại"
+            return "Đã cấp quyền!"
         default:
             return "Cấp quyền Accessibility"
         }
@@ -306,7 +306,7 @@ struct PermissionStep: View {
         case .granted:
             return "GoNhanh đã có quyền cần thiết để hoạt động."
         case .needsRestart:
-            return "Bạn đã cấp quyền! Khởi động lại app để áp dụng."
+            return "Nhấn nút bên dưới để khởi động lại app và bắt đầu sử dụng."
         default:
             return "GoNhanh cần quyền Accessibility để nhận phím bạn gõ và chuyển đổi thành tiếng Việt."
         }
