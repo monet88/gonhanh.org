@@ -373,44 +373,56 @@ private func sendTextReplacement(backspaceCount: Int, chars: [Character]) {
 
 /// Terminal-friendly: backspace then type
 private func sendTextReplacementWithBackspace(backspaceCount: Int, chars: [Character]) {
-    let source = CGEventSource(stateID: .privateState)
+    guard let source = CGEventSource(stateID: .privateState) else {
+        debugLog("[Send] Failed to create CGEventSource")
+        return
+    }
 
     // Send backspaces
-    for _ in 0..<backspaceCount {
-        if let down = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.backspace, keyDown: true),
-           let up = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.backspace, keyDown: false) {
-            down.post(tap: .cgSessionEventTap)
-            up.post(tap: .cgSessionEventTap)
+    for i in 0..<backspaceCount {
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.backspace, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.backspace, keyDown: false) else {
+            debugLog("[Send] Failed to create backspace event \(i)")
+            continue
         }
+        down.post(tap: .cgSessionEventTap)
+        up.post(tap: .cgSessionEventTap)
     }
 
     // Send new characters
     let string = String(chars)
     let utf16 = Array(string.utf16)
 
-    if let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-       let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
-        down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
-        up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
-        down.post(tap: .cgSessionEventTap)
-        up.post(tap: .cgSessionEventTap)
+    guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+          let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+        debugLog("[Send] Failed to create unicode event for: \(string)")
+        return
     }
+    down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
+    up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
+    down.post(tap: .cgSessionEventTap)
+    up.post(tap: .cgSessionEventTap)
 }
 
 /// GUI app-friendly: select then replace (atomic, fixes Chrome/Excel autocomplete)
 private func sendTextReplacementWithSelection(backspaceCount: Int, chars: [Character]) {
-    let source = CGEventSource(stateID: .privateState)
+    guard let source = CGEventSource(stateID: .privateState) else {
+        debugLog("[Send] Failed to create CGEventSource")
+        return
+    }
 
     if backspaceCount > 0 {
         // Select text with Shift+Left Arrow
-        for _ in 0..<backspaceCount {
-            if let down = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.leftArrow, keyDown: true),
-               let up = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.leftArrow, keyDown: false) {
-                down.flags = .maskShift
-                up.flags = .maskShift
-                down.post(tap: .cgSessionEventTap)
-                up.post(tap: .cgSessionEventTap)
+        for i in 0..<backspaceCount {
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.leftArrow, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: KeyCode.leftArrow, keyDown: false) else {
+                debugLog("[Send] Failed to create shift+left event \(i)")
+                continue
             }
+            down.flags = .maskShift
+            up.flags = .maskShift
+            down.post(tap: .cgSessionEventTap)
+            up.post(tap: .cgSessionEventTap)
         }
     }
 
@@ -418,12 +430,14 @@ private func sendTextReplacementWithSelection(backspaceCount: Int, chars: [Chara
     let string = String(chars)
     let utf16 = Array(string.utf16)
 
-    if let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-       let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
-        down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
-        up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
-        down.post(tap: .cgSessionEventTap)
-        up.post(tap: .cgSessionEventTap)
+    guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+          let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+        debugLog("[Send] Failed to create unicode event for: \(string)")
+        return
     }
+    down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
+    up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
+    down.post(tap: .cgSessionEventTap)
+    up.post(tap: .cgSessionEventTap)
 }
 

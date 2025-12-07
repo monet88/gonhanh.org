@@ -1,13 +1,24 @@
 import SwiftUI
 
+// MARK: - Settings Keys
+
+private enum SettingsKey {
+    static let enabled = "gonhanh.enabled"
+    static let method = "gonhanh.method"
+}
+
+// MARK: - Input Mode
+
+enum InputMode: Int {
+    case telex = 0
+    case vni = 1
+}
+
+// MARK: - Settings View
+
 struct SettingsView: View {
     @State private var enabled = true
     @State private var mode: InputMode = .telex
-
-    enum InputMode: Int {
-        case telex = 0
-        case vni = 1
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -59,12 +70,27 @@ struct SettingsView: View {
     }
 
     func loadSettings() {
-        // TODO: Load from Rust config
+        let defaults = UserDefaults.standard
+
+        // Load enabled state (default: true)
+        if defaults.object(forKey: SettingsKey.enabled) != nil {
+            enabled = defaults.bool(forKey: SettingsKey.enabled)
+        }
+
+        // Load input method (default: telex)
+        let methodValue = defaults.integer(forKey: SettingsKey.method)
+        mode = InputMode(rawValue: methodValue) ?? .telex
     }
 
     func saveSettings() {
+        let defaults = UserDefaults.standard
+        defaults.set(enabled, forKey: SettingsKey.enabled)
+        defaults.set(mode.rawValue, forKey: SettingsKey.method)
+
+        // Sync with Rust engine
         RustBridge.setEnabled(enabled)
         RustBridge.setMethod(mode.rawValue)
+
         NSApp.keyWindow?.close()
     }
 }
