@@ -17,7 +17,7 @@ enum AppMetadata {
     static let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
 
     // Author
-    static let author = "Phan Châu Nhật Kha (Kha Phan)"
+    static let author = "Kha Phan"
     static let authorEmail = "nhatkha1407@gmail.com"
 
     // Links
