@@ -13,12 +13,11 @@ struct OnboardingView: View {
         case welcome
         case permission
         case setup
-        case done
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            ProgressIndicator(step: stepIndex, total: 4)
+            ProgressIndicator(step: stepIndex, total: 3)
                 .padding(.vertical, 16)
 
             Divider()
@@ -33,9 +32,7 @@ struct OnboardingView: View {
                         onRestart: restartApp
                     )
                 case .setup:
-                    SetupStepView(selectedMode: $selectedMode, onNext: goToDone)
-                case .done:
-                    DoneStepView(onFinish: finish)
+                    SetupStepView(selectedMode: $selectedMode, onFinish: finish)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,7 +51,6 @@ struct OnboardingView: View {
         case .welcome: return 0
         case .permission: return 1
         case .setup: return 2
-        case .done: return 3
         }
     }
 
@@ -68,19 +64,17 @@ struct OnboardingView: View {
         }
     }
 
-    private func goToDone() {
-        // Save selected mode BEFORE going to done
-        UserDefaults.standard.set(selectedMode.rawValue, forKey: SettingsKey.method)
-        currentStep = .done
-    }
-
     private func finish() {
+        UserDefaults.standard.set(selectedMode.rawValue, forKey: SettingsKey.method)
         UserDefaults.standard.set(true, forKey: SettingsKey.hasCompletedOnboarding)
         NotificationCenter.default.post(name: .onboardingCompleted, object: nil)
         NSApp.keyWindow?.close()
     }
 
     private func restartApp() {
+        // Save selected mode before restart (default Telex)
+        UserDefaults.standard.set(selectedMode.rawValue, forKey: SettingsKey.method)
+
         let appPath = Bundle.main.bundlePath
         let task = Process()
         task.launchPath = "/bin/sh"
