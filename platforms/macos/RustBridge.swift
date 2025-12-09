@@ -42,6 +42,9 @@ func ime_init()
 @_silgen_name("ime_key")
 func ime_key(_ key: UInt16, _ caps: Bool, _ ctrl: Bool) -> UnsafeMutablePointer<ImeResult>?
 
+@_silgen_name("ime_key_ext")
+func ime_key_ext(_ key: UInt16, _ caps: Bool, _ ctrl: Bool, _ shift: Bool) -> UnsafeMutablePointer<ImeResult>?
+
 @_silgen_name("ime_method")
 func ime_method(_ method: UInt8)
 
@@ -69,13 +72,18 @@ class RustBridge {
 
     /// Process key event
     /// Returns: (backspaceCount, newChars) or nil if no action needed
-    static func processKey(keyCode: UInt16, caps: Bool, ctrl: Bool) -> (Int, [Character])? {
+    /// - Parameters:
+    ///   - keyCode: macOS virtual keycode
+    ///   - caps: true if CapsLock is active (for uppercase letters)
+    ///   - ctrl: true if Cmd/Ctrl/Alt is pressed (bypasses IME)
+    ///   - shift: true if Shift key is pressed (for symbols like @, #, $)
+    static func processKey(keyCode: UInt16, caps: Bool, ctrl: Bool, shift: Bool = false) -> (Int, [Character])? {
         guard isInitialized else {
             debugLog("[RustBridge] Engine not initialized!")
             return nil
         }
 
-        guard let resultPtr = ime_key(keyCode, caps, ctrl) else {
+        guard let resultPtr = ime_key_ext(keyCode, caps, ctrl, shift) else {
             return nil
         }
         defer { ime_free(resultPtr) }
@@ -300,14 +308,16 @@ private func keyboardCallback(
         return nil // Consume the event
     }
 
-    let caps = flags.contains(.maskShift) || flags.contains(.maskAlphaShift)
+    // Separate shift from caps for VNI Shift+number handling
+    let shift = flags.contains(.maskShift)
+    let caps = shift || flags.contains(.maskAlphaShift)
     let ctrl = flags.contains(.maskCommand) || flags.contains(.maskControl) ||
                flags.contains(.maskAlternate)
 
-    debugLog("[KeyboardHook] Key: \(keyCode), caps=\(caps), ctrl=\(ctrl)")
+    debugLog("[KeyboardHook] Key: \(keyCode), caps=\(caps), shift=\(shift), ctrl=\(ctrl)")
 
     // Process key through Rust engine
-    if let (backspace, chars) = RustBridge.processKey(keyCode: keyCode, caps: caps, ctrl: ctrl) {
+    if let (backspace, chars) = RustBridge.processKey(keyCode: keyCode, caps: caps, ctrl: ctrl, shift: shift) {
         let charsStr = String(chars)
         debugLog("[KeyboardHook] Rust returned: backspace=\(backspace), chars=\"\(charsStr)\" (count=\(chars.count))")
 
