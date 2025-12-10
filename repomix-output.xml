@@ -128,6 +128,7 @@ platforms/
       Resources/
         Icons/
           .gitkeep
+          app.ico
       Services/
         SettingsService.cs
       Views/
@@ -1114,6 +1115,140 @@ echo "✅ macOS app built successfully!"
 echo "📦 Binary: platforms/macos/build/Release/GoNhanh"
 echo ""
 echo "To create .app bundle, run: make bundle"
+</file>
+
+<file path="scripts/build-macos.sh">
+#!/bin/bash
+set -e
+
+# Source rustup environment
+if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+fi
+
+# Parse arguments
+CLEAN_INSTALL=false
+for arg in "$@"; do
+    case $arg in
+        --clean)
+            CLEAN_INSTALL=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: build-macos.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --clean    Remove existing GoNhanh app and clear permissions before building"
+            echo "  --help     Show this help message"
+            exit 0
+            ;;
+    esac
+done
+
+# Clean install: remove existing app and reset permissions
+if [ "$CLEAN_INSTALL" = true ]; then
+    echo "🧹 Cleaning existing installation..."
+
+    # Kill running GoNhanh processes
+    if pgrep -f "GoNhanh" > /dev/null 2>&1; then
+        echo "Stopping running GoNhanh processes..."
+        pkill -f "GoNhanh" 2>/dev/null || true
+        # Wait for process to terminate
+        sleep 1
+        # Force kill if still running
+        if pgrep -f "GoNhanh" > /dev/null 2>&1; then
+            echo "Force killing GoNhanh..."
+            pkill -9 -f "GoNhanh" 2>/dev/null || true
+            sleep 1
+        fi
+        echo "GoNhanh processes stopped."
+    else
+        echo "No running GoNhanh process found."
+    fi
+
+    # Remove from /Applications (requires sudo)
+    if [ -d "/Applications/GoNhanh.app" ]; then
+        echo "Removing /Applications/GoNhanh.app (requires sudo)..."
+        sudo rm -rf "/Applications/GoNhanh.app"
+    fi
+
+    # Remove from Input Methods
+    if [ -d "$HOME/Library/Input Methods/GoNhanh.app" ]; then
+        echo "Removing ~/Library/Input Methods/GoNhanh.app..."
+        rm -rf "$HOME/Library/Input Methods/GoNhanh.app"
+    fi
+
+    # Clear TCC database (Accessibility permissions) - requires Full Disk Access or SIP disabled
+    echo "Note: To fully reset Accessibility permissions, go to:"
+    echo "  System Settings > Privacy & Security > Accessibility"
+    echo "  Remove GoNhanh from the list manually"
+    echo ""
+
+    # Clear input source registration
+    echo "Clearing input source cache..."
+    defaults delete com.apple.HIToolbox AppleEnabledInputSources 2>/dev/null || true
+
+    echo "✅ Clean complete!"
+    echo ""
+fi
+
+# Always kill running GoNhanh before build (even without --clean)
+if pgrep -x "GoNhanh" > /dev/null 2>&1; then
+    echo "🛑 Stopping running GoNhanh..."
+    pkill -x "GoNhanh" 2>/dev/null || true
+    sleep 0.5
+    # Force kill if still running
+    if pgrep -x "GoNhanh" > /dev/null 2>&1; then
+        pkill -9 -x "GoNhanh" 2>/dev/null || true
+        sleep 0.5
+    fi
+fi
+
+echo "🍎 Building macOS app..."
+
+# Get version from git tag
+GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+VERSION=${GIT_TAG#v}  # Remove 'v' prefix
+echo "📌 Version from git tag: $VERSION"
+
+# Build macOS app with xcodebuild
+cd "$(dirname "$0")/../platforms/macos"
+
+if [ -d "GoNhanh.xcodeproj" ]; then
+    echo "Building with Xcode..."
+
+    # Build with version from git tag
+    xcodebuild -scheme GoNhanh \
+        -configuration Release \
+        -destination 'platform=macOS,arch=arm64' \
+        -destination 'platform=macOS,arch=x86_64' \
+        -derivedDataPath "$(pwd)/build/DerivedData" \
+        MARKETING_VERSION="$VERSION" \
+        CURRENT_PROJECT_VERSION="$VERSION" \
+        2>&1 | grep -v "Using the first of multiple matching destinations"
+
+    # Copy app from DerivedData to local build directory
+    echo "Copying app to build directory..."
+    mkdir -p build/Release
+    cp -R "build/DerivedData/Build/Products/Release/GoNhanh.app" build/Release/
+
+    # Re-sign app with entitlements for local development
+    echo "Signing app with entitlements..."
+    codesign --force --deep --sign - --entitlements GoNhanh.entitlements build/Release/GoNhanh.app
+
+    echo "✅ macOS app built successfully!"
+    echo "📦 App: platforms/macos/build/Release/GoNhanh.app"
+else
+    echo "⚠️  Xcode project not found!"
+    echo "Please create Xcode project in platforms/macos/"
+    echo "Steps:"
+    echo "  1. Open Xcode"
+    echo "  2. Create new macOS App project"
+    echo "  3. Name: GoNhanh"
+    echo "  4. Location: platforms/macos/"
+    echo "  5. Add Swift files from GoNhanh/ folder"
+    echo "  6. Link libgonhanh_core.a in Build Phases"
+fi
 </file>
 
 <file path="scripts/setup.sh">
@@ -3212,6 +3347,163 @@ final class LaunchAtLoginStatusTests: XCTestCase {
         let validStatuses = ["enabled", "notFound", "notRegistered", "requiresApproval", "unknown", "unsupported"]
         XCTAssertTrue(validStatuses.contains(manager.statusDescription))
     }
+}
+</file>
+
+<file path="platforms/macos/AboutView.swift">
+import SwiftUI
+
+struct AboutView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            infoSection
+            Divider()
+            linksSection
+            Divider()
+            footer
+        }
+        .frame(width: 360)
+        .background(colorScheme == .dark ? Color.black.opacity(0.2) : Color.white)
+    }
+
+    // MARK: - Header
+    private var header: some View {
+        VStack(spacing: 8) {
+            Image(nsImage: AppMetadata.logo)
+                .resizable()
+                .frame(width: 80, height: 80)
+                .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+
+            Text(AppMetadata.name)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+
+            Text(AppMetadata.tagline)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            // Version badge
+            HStack(spacing: 12) {
+                versionBadge(label: "Version", value: AppMetadata.version)
+                versionBadge(label: "Build", value: AppMetadata.buildNumber)
+            }
+            .padding(.top, 4)
+        }
+        .padding(.vertical, 24)
+        .padding(.horizontal, 32)
+    }
+
+    private func versionBadge(label: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.04))
+        )
+    }
+
+    // MARK: - Info Section
+    private var infoSection: some View {
+        VStack(spacing: 12) {
+            infoRow(icon: "person.fill", title: "Developer", value: AppMetadata.author)
+            infoRow(icon: "envelope.fill", title: "Contact", value: AppMetadata.authorEmail, isLink: true, url: "mailto:\(AppMetadata.authorEmail)")
+            infoRow(icon: "hammer.fill", title: "Built with", value: AppMetadata.techStack)
+            infoRow(icon: "doc.text.fill", title: "License", value: AppMetadata.license)
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 24)
+    }
+
+    private func infoRow(icon: String, title: String, value: String, isLink: Bool = false, url: String? = nil) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+
+            Text(title)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .leading)
+
+            if isLink, let urlString = url, let linkURL = URL(string: urlString) {
+                Link(value, destination: linkURL)
+                    .font(.callout)
+                    .fontWeight(.medium)
+            } else {
+                Text(value)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+            }
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Links Section
+    private var linksSection: some View {
+        HStack(spacing: 16) {
+            linkButton(icon: "globe", title: "Website", url: AppMetadata.website)
+            linkButton(icon: "chevron.left.forwardslash.chevron.right", title: "GitHub", url: AppMetadata.repository)
+            linkButton(icon: "exclamationmark.bubble.fill", title: "Issues", url: AppMetadata.issuesURL)
+            linkButton(icon: "link", title: "LinkedIn", url: AppMetadata.authorLinkedin)
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 24)
+    }
+
+    private func linkButton(icon: String, title: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                Text(title)
+                    .font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.03))
+            )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .onHover { hovering in
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
+
+    // MARK: - Footer
+    private var footer: some View {
+        Text(AppMetadata.copyright)
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(colorScheme == .dark ? Color.white.opacity(0.02) : Color.black.opacity(0.02))
+    }
+}
+
+#Preview {
+    AboutView()
 }
 </file>
 
@@ -5509,140 +5801,6 @@ if ($ARM64) {
 Write-Host "`nBuild complete!" -ForegroundColor Green
 </file>
 
-<file path="scripts/build-macos.sh">
-#!/bin/bash
-set -e
-
-# Source rustup environment
-if [ -f "$HOME/.cargo/env" ]; then
-    source "$HOME/.cargo/env"
-fi
-
-# Parse arguments
-CLEAN_INSTALL=false
-for arg in "$@"; do
-    case $arg in
-        --clean)
-            CLEAN_INSTALL=true
-            shift
-            ;;
-        --help|-h)
-            echo "Usage: build-macos.sh [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --clean    Remove existing GoNhanh app and clear permissions before building"
-            echo "  --help     Show this help message"
-            exit 0
-            ;;
-    esac
-done
-
-# Clean install: remove existing app and reset permissions
-if [ "$CLEAN_INSTALL" = true ]; then
-    echo "🧹 Cleaning existing installation..."
-
-    # Kill running GoNhanh processes
-    if pgrep -f "GoNhanh" > /dev/null 2>&1; then
-        echo "Stopping running GoNhanh processes..."
-        pkill -f "GoNhanh" 2>/dev/null || true
-        # Wait for process to terminate
-        sleep 1
-        # Force kill if still running
-        if pgrep -f "GoNhanh" > /dev/null 2>&1; then
-            echo "Force killing GoNhanh..."
-            pkill -9 -f "GoNhanh" 2>/dev/null || true
-            sleep 1
-        fi
-        echo "GoNhanh processes stopped."
-    else
-        echo "No running GoNhanh process found."
-    fi
-
-    # Remove from /Applications (requires sudo)
-    if [ -d "/Applications/GoNhanh.app" ]; then
-        echo "Removing /Applications/GoNhanh.app (requires sudo)..."
-        sudo rm -rf "/Applications/GoNhanh.app"
-    fi
-
-    # Remove from Input Methods
-    if [ -d "$HOME/Library/Input Methods/GoNhanh.app" ]; then
-        echo "Removing ~/Library/Input Methods/GoNhanh.app..."
-        rm -rf "$HOME/Library/Input Methods/GoNhanh.app"
-    fi
-
-    # Clear TCC database (Accessibility permissions) - requires Full Disk Access or SIP disabled
-    echo "Note: To fully reset Accessibility permissions, go to:"
-    echo "  System Settings > Privacy & Security > Accessibility"
-    echo "  Remove GoNhanh from the list manually"
-    echo ""
-
-    # Clear input source registration
-    echo "Clearing input source cache..."
-    defaults delete com.apple.HIToolbox AppleEnabledInputSources 2>/dev/null || true
-
-    echo "✅ Clean complete!"
-    echo ""
-fi
-
-# Always kill running GoNhanh before build (even without --clean)
-if pgrep -x "GoNhanh" > /dev/null 2>&1; then
-    echo "🛑 Stopping running GoNhanh..."
-    pkill -x "GoNhanh" 2>/dev/null || true
-    sleep 0.5
-    # Force kill if still running
-    if pgrep -x "GoNhanh" > /dev/null 2>&1; then
-        pkill -9 -x "GoNhanh" 2>/dev/null || true
-        sleep 0.5
-    fi
-fi
-
-echo "🍎 Building macOS app..."
-
-# Get version from git tag
-GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-VERSION=${GIT_TAG#v}  # Remove 'v' prefix
-echo "📌 Version from git tag: $VERSION"
-
-# Build macOS app with xcodebuild
-cd "$(dirname "$0")/../platforms/macos"
-
-if [ -d "GoNhanh.xcodeproj" ]; then
-    echo "Building with Xcode..."
-
-    # Build with version from git tag
-    xcodebuild -scheme GoNhanh \
-        -configuration Release \
-        -destination 'platform=macOS,arch=arm64' \
-        -destination 'platform=macOS,arch=x86_64' \
-        -derivedDataPath "$(pwd)/build/DerivedData" \
-        MARKETING_VERSION="$VERSION" \
-        CURRENT_PROJECT_VERSION="$VERSION" \
-        2>&1 | grep -v "Using the first of multiple matching destinations"
-
-    # Copy app from DerivedData to local build directory
-    echo "Copying app to build directory..."
-    mkdir -p build/Release
-    cp -R "build/DerivedData/Build/Products/Release/GoNhanh.app" build/Release/
-
-    # Re-sign app with entitlements for local development
-    echo "Signing app with entitlements..."
-    codesign --force --deep --sign - --entitlements GoNhanh.entitlements build/Release/GoNhanh.app
-
-    echo "✅ macOS app built successfully!"
-    echo "📦 App: platforms/macos/build/Release/GoNhanh.app"
-else
-    echo "⚠️  Xcode project not found!"
-    echo "Please create Xcode project in platforms/macos/"
-    echo "Steps:"
-    echo "  1. Open Xcode"
-    echo "  2. Create new macOS App project"
-    echo "  3. Name: GoNhanh"
-    echo "  4. Location: platforms/macos/"
-    echo "  5. Add Swift files from GoNhanh/ folder"
-    echo "  6. Link libgonhanh_core.a in Build Phases"
-fi
-</file>
-
 <file path="scripts/setup-windows.ps1">
 # GoNhanh Windows Development Setup Script
 # Run: powershell -ExecutionPolicy Bypass -File scripts/setup-windows.ps1
@@ -7774,163 +7932,6 @@ fn paragraph_vni() {
 }
 </file>
 
-<file path="platforms/macos/AboutView.swift">
-import SwiftUI
-
-struct AboutView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            infoSection
-            Divider()
-            linksSection
-            Divider()
-            footer
-        }
-        .frame(width: 360)
-        .background(colorScheme == .dark ? Color.black.opacity(0.2) : Color.white)
-    }
-
-    // MARK: - Header
-    private var header: some View {
-        VStack(spacing: 8) {
-            Image(nsImage: AppMetadata.logo)
-                .resizable()
-                .frame(width: 80, height: 80)
-                .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
-
-            Text(AppMetadata.name)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-
-            Text(AppMetadata.tagline)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            // Version badge
-            HStack(spacing: 12) {
-                versionBadge(label: "Version", value: AppMetadata.version)
-                versionBadge(label: "Build", value: AppMetadata.buildNumber)
-            }
-            .padding(.top, 4)
-        }
-        .padding(.vertical, 24)
-        .padding(.horizontal, 32)
-    }
-
-    private func versionBadge(label: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            Text(value)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.04))
-        )
-    }
-
-    // MARK: - Info Section
-    private var infoSection: some View {
-        VStack(spacing: 12) {
-            infoRow(icon: "person.fill", title: "Developer", value: AppMetadata.author)
-            infoRow(icon: "envelope.fill", title: "Contact", value: AppMetadata.authorEmail, isLink: true, url: "mailto:\(AppMetadata.authorEmail)")
-            infoRow(icon: "hammer.fill", title: "Built with", value: AppMetadata.techStack)
-            infoRow(icon: "doc.text.fill", title: "License", value: AppMetadata.license)
-        }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 24)
-    }
-
-    private func infoRow(icon: String, title: String, value: String, isLink: Bool = false, url: String? = nil) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .frame(width: 20)
-
-            Text(title)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 80, alignment: .leading)
-
-            if isLink, let urlString = url, let linkURL = URL(string: urlString) {
-                Link(value, destination: linkURL)
-                    .font(.callout)
-                    .fontWeight(.medium)
-            } else {
-                Text(value)
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-            }
-
-            Spacer()
-        }
-    }
-
-    // MARK: - Links Section
-    private var linksSection: some View {
-        HStack(spacing: 16) {
-            linkButton(icon: "globe", title: "Website", url: AppMetadata.website)
-            linkButton(icon: "chevron.left.forwardslash.chevron.right", title: "GitHub", url: AppMetadata.repository)
-            linkButton(icon: "exclamationmark.bubble.fill", title: "Issues", url: AppMetadata.issuesURL)
-            linkButton(icon: "link", title: "LinkedIn", url: AppMetadata.authorLinkedin)
-        }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 24)
-    }
-
-    private func linkButton(icon: String, title: String, url: String) -> some View {
-        Link(destination: URL(string: url)!) {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 16))
-                Text(title)
-                    .font(.caption2)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.03))
-            )
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .onHover { hovering in
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
-    }
-
-    // MARK: - Footer
-    private var footer: some View {
-        Text(AppMetadata.copyright)
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(colorScheme == .dark ? Color.white.opacity(0.02) : Color.black.opacity(0.02))
-    }
-}
-
-#Preview {
-    AboutView()
-}
-</file>
-
 <file path="platforms/macos/UpdateView.swift">
 import SwiftUI
 
@@ -9468,6 +9469,318 @@ mod test_utils {
 pub use test_utils::*;
 </file>
 
+<file path="platforms/macos/MenuBar.swift">
+import Cocoa
+import SwiftUI
+
+// MARK: - SwiftUI Toggle Wrapper
+
+class ToggleState: ObservableObject {
+    @Published var isOn: Bool
+    var onToggle: (() -> Void)?
+
+    init(isOn: Bool) {
+        self.isOn = isOn
+    }
+}
+
+struct ToggleWrapperView: View {
+    @ObservedObject var state: ToggleState
+
+    var body: some View {
+        Toggle("", isOn: $state.isOn)
+            .toggleStyle(.switch)
+            .tint(.green)
+            .onChange(of: state.isOn) { _ in
+                state.onToggle?()
+            }
+            .labelsHidden()
+    }
+}
+
+// MARK: - Menu Bar Controller
+
+class MenuBarController {
+    private var statusItem: NSStatusItem!
+    private var onboardingWindow: NSWindow?
+    private var aboutWindow: NSWindow?
+    private var updateWindow: NSWindow?
+    private var toggleState: ToggleState?
+
+    private var isEnabled = true
+    private var currentMethod: InputMode = .telex
+
+    init() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(onboardingDidComplete),
+            name: .onboardingCompleted,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleToggleVietnamese),
+            name: .toggleVietnamese,
+            object: nil
+        )
+
+        setupMenu()
+        updateStatusButton()
+
+        if UserDefaults.standard.bool(forKey: SettingsKey.hasCompletedOnboarding) && AXIsProcessTrusted() {
+            loadSettings()
+            startEngine()
+        } else {
+            showOnboarding()
+        }
+    }
+
+    @objc private func handleToggleVietnamese() {
+        isEnabled.toggle()
+        UserDefaults.standard.set(isEnabled, forKey: SettingsKey.enabled)
+        RustBridge.setEnabled(isEnabled)
+        updateStatusButton()
+        updateMenu()
+    }
+
+    // MARK: - Setup
+
+    private func loadSettings() {
+        isEnabled = UserDefaults.standard.object(forKey: SettingsKey.enabled) as? Bool ?? true
+        currentMethod = InputMode(rawValue: UserDefaults.standard.integer(forKey: SettingsKey.method)) ?? .telex
+    }
+
+    private func startEngine() {
+        RustBridge.initialize()
+        KeyboardHookManager.shared.start()
+        RustBridge.setEnabled(isEnabled)
+        RustBridge.setMethod(currentMethod.rawValue)
+
+        // Check for updates in background after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UpdateManager.shared.checkForUpdatesSilently()
+        }
+    }
+
+    @objc private func onboardingDidComplete() {
+        loadSettings()
+        updateStatusButton()
+        updateMenu()
+        startEngine()
+        enableLaunchAtLogin()
+    }
+
+    // MARK: - Status Button
+
+    private func updateStatusButton() {
+        guard let button = statusItem.button else { return }
+        button.title = ""
+        button.image = createStatusIcon(text: isEnabled ? "V" : "E")
+    }
+
+    private func createStatusIcon(text: String) -> NSImage {
+        let width: CGFloat = 22
+        let height: CGFloat = 16
+        let image = NSImage(size: NSSize(width: width, height: height))
+
+        image.lockFocus()
+
+        // Background trắng bo góc nhẹ
+        let rect = NSRect(x: 0, y: 0, width: width, height: height)
+        let path = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
+        NSColor.white.setFill()
+        path.fill()
+
+        // Text transparent (dùng .clear với blend mode)
+        let font = NSFont.systemFont(ofSize: 13, weight: .bold)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.black
+        ]
+        let textSize = text.size(withAttributes: attrs)
+        let textRect = NSRect(
+            x: (width - textSize.width) / 2,
+            y: (height - textSize.height) / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
+
+        // Vẽ text với blend mode để tạo transparent
+        NSGraphicsContext.current?.compositingOperation = .destinationOut
+        text.draw(in: textRect, withAttributes: attrs)
+
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
+    // MARK: - Menu
+
+    private func setupMenu() {
+        let menu = NSMenu()
+
+        // Header with toggle
+        let header = NSMenuItem()
+        header.view = createHeaderView()
+        header.tag = 1
+        menu.addItem(header)
+        menu.addItem(.separator())
+
+        // Input methods
+        let telex = NSMenuItem(title: "Telex", action: #selector(selectTelex), keyEquivalent: "1")
+        telex.keyEquivalentModifierMask = .command
+        telex.target = self
+        telex.tag = 10
+        menu.addItem(telex)
+
+        let vni = NSMenuItem(title: "VNI", action: #selector(selectVNI), keyEquivalent: "2")
+        vni.keyEquivalentModifierMask = .command
+        vni.target = self
+        vni.tag = 11
+        menu.addItem(vni)
+        menu.addItem(.separator())
+
+        // About & Help
+        let about = NSMenuItem(title: "Giới thiệu \(AppMetadata.name)", action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+
+        let checkUpdate = NSMenuItem(title: "Kiểm tra cập nhật...", action: #selector(checkForUpdates), keyEquivalent: "u")
+        checkUpdate.keyEquivalentModifierMask = .command
+        checkUpdate.target = self
+        menu.addItem(checkUpdate)
+
+        let help = NSMenuItem(title: "Góp ý & Báo lỗi", action: #selector(openHelp), keyEquivalent: "")
+        help.target = self
+        menu.addItem(help)
+        menu.addItem(.separator())
+
+        // Quit
+        let quit = NSMenuItem(title: "Thoát", action: #selector(NSApp.terminate), keyEquivalent: "q")
+        menu.addItem(quit)
+
+        statusItem.menu = menu
+        updateMenu()
+    }
+
+    private func createHeaderView() -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 36))
+
+        // App name
+        let name = NSTextField(labelWithString: AppMetadata.name)
+        name.font = .systemFont(ofSize: 13, weight: .bold)
+        name.frame = NSRect(x: 14, y: 10, width: 120, height: 16)
+        view.addSubview(name)
+
+        // Toggle using SwiftUI for custom tint color
+        if toggleState == nil {
+            toggleState = ToggleState(isOn: isEnabled)
+            toggleState?.onToggle = { [weak self] in self?.handleToggle() }
+        }
+        toggleState?.isOn = isEnabled
+        let toggleView = ToggleWrapperView(state: toggleState!)
+        let hostingView = NSHostingView(rootView: toggleView)
+        hostingView.frame = NSRect(x: 162, y: 4, width: 50, height: 28)
+        view.addSubview(hostingView)
+
+        return view
+    }
+
+    private func updateMenu() {
+        guard let menu = statusItem.menu else { return }
+        menu.item(withTag: 1)?.view = createHeaderView()
+        menu.item(withTag: 10)?.state = currentMethod == .telex ? .on : .off
+        menu.item(withTag: 11)?.state = currentMethod == .vni ? .on : .off
+    }
+
+    // MARK: - Actions
+
+    private func handleToggle() {
+        isEnabled = toggleState?.isOn ?? !isEnabled
+        UserDefaults.standard.set(isEnabled, forKey: SettingsKey.enabled)
+        RustBridge.setEnabled(isEnabled)
+        updateStatusButton()
+        // Update method checkmarks only, toggle animates itself
+        guard let menu = statusItem.menu else { return }
+        menu.item(withTag: 10)?.state = currentMethod == .telex ? .on : .off
+        menu.item(withTag: 11)?.state = currentMethod == .vni ? .on : .off
+    }
+
+    @objc private func selectTelex() { setMethod(.telex) }
+    @objc private func selectVNI() { setMethod(.vni) }
+
+    private func setMethod(_ mode: InputMode) {
+        currentMethod = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: SettingsKey.method)
+        RustBridge.setMethod(mode.rawValue)
+        updateStatusButton()
+        updateMenu()
+    }
+
+    private func enableLaunchAtLogin() {
+        do {
+            try LaunchAtLoginManager.shared.enable()
+        } catch {
+            print("[LaunchAtLogin] Error: \(error)")
+        }
+    }
+
+    private func showOnboarding() {
+        if onboardingWindow == nil {
+            let view = OnboardingView()
+            let controller = NSHostingController(rootView: view)
+            onboardingWindow = NSWindow(contentViewController: controller)
+            onboardingWindow?.title = AppMetadata.name
+            onboardingWindow?.styleMask = [.titled, .closable]
+            onboardingWindow?.setContentSize(controller.view.fittingSize)
+            onboardingWindow?.center()
+        }
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func showAbout() {
+        if aboutWindow == nil {
+            let controller = NSHostingController(rootView: AboutView())
+            let window = NSWindow(contentViewController: controller)
+            window.title = "Giới thiệu \(AppMetadata.name)"
+            window.styleMask = [.titled, .closable]
+            window.setContentSize(controller.view.fittingSize)
+            window.center()
+            window.isReleasedWhenClosed = false
+            aboutWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        aboutWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openHelp() {
+        NSWorkspace.shared.open(URL(string: AppMetadata.issuesURL)!)
+    }
+
+    @objc private func checkForUpdates() {
+        if updateWindow == nil {
+            let controller = NSHostingController(rootView: UpdateView())
+            let window = NSWindow(contentViewController: controller)
+            window.title = "Kiểm tra cập nhật"
+            window.styleMask = [.titled, .closable]
+            window.setContentSize(controller.view.fittingSize)
+            window.center()
+            window.isReleasedWhenClosed = false
+            updateWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        updateWindow?.makeKeyAndOrderFront(nil)
+
+        // Trigger update check when window opens
+        UpdateManager.shared.checkForUpdatesManually()
+    }
+}
+</file>
+
 <file path="platforms/windows/GoNhanh/GoNhanh.csproj">
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -9913,318 +10226,6 @@ pub fn assert_passthrough(e: &mut Engine, key: u16) {
 /// Assert transformation happens
 pub fn assert_transforms(e: &mut Engine, key: u16) {
     assert_action(e, key, false, false, Action::Send);
-}
-</file>
-
-<file path="platforms/macos/MenuBar.swift">
-import Cocoa
-import SwiftUI
-
-// MARK: - SwiftUI Toggle Wrapper
-
-class ToggleState: ObservableObject {
-    @Published var isOn: Bool
-    var onToggle: (() -> Void)?
-
-    init(isOn: Bool) {
-        self.isOn = isOn
-    }
-}
-
-struct ToggleWrapperView: View {
-    @ObservedObject var state: ToggleState
-
-    var body: some View {
-        Toggle("", isOn: $state.isOn)
-            .toggleStyle(.switch)
-            .tint(.green)
-            .onChange(of: state.isOn) { _ in
-                state.onToggle?()
-            }
-            .labelsHidden()
-    }
-}
-
-// MARK: - Menu Bar Controller
-
-class MenuBarController {
-    private var statusItem: NSStatusItem!
-    private var onboardingWindow: NSWindow?
-    private var aboutWindow: NSWindow?
-    private var updateWindow: NSWindow?
-    private var toggleState: ToggleState?
-
-    private var isEnabled = true
-    private var currentMethod: InputMode = .telex
-
-    init() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(onboardingDidComplete),
-            name: .onboardingCompleted,
-            object: nil
-        )
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleToggleVietnamese),
-            name: .toggleVietnamese,
-            object: nil
-        )
-
-        setupMenu()
-        updateStatusButton()
-
-        if UserDefaults.standard.bool(forKey: SettingsKey.hasCompletedOnboarding) && AXIsProcessTrusted() {
-            loadSettings()
-            startEngine()
-        } else {
-            showOnboarding()
-        }
-    }
-
-    @objc private func handleToggleVietnamese() {
-        isEnabled.toggle()
-        UserDefaults.standard.set(isEnabled, forKey: SettingsKey.enabled)
-        RustBridge.setEnabled(isEnabled)
-        updateStatusButton()
-        updateMenu()
-    }
-
-    // MARK: - Setup
-
-    private func loadSettings() {
-        isEnabled = UserDefaults.standard.object(forKey: SettingsKey.enabled) as? Bool ?? true
-        currentMethod = InputMode(rawValue: UserDefaults.standard.integer(forKey: SettingsKey.method)) ?? .telex
-    }
-
-    private func startEngine() {
-        RustBridge.initialize()
-        KeyboardHookManager.shared.start()
-        RustBridge.setEnabled(isEnabled)
-        RustBridge.setMethod(currentMethod.rawValue)
-
-        // Check for updates in background after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            UpdateManager.shared.checkForUpdatesSilently()
-        }
-    }
-
-    @objc private func onboardingDidComplete() {
-        loadSettings()
-        updateStatusButton()
-        updateMenu()
-        startEngine()
-        enableLaunchAtLogin()
-    }
-
-    // MARK: - Status Button
-
-    private func updateStatusButton() {
-        guard let button = statusItem.button else { return }
-        button.title = ""
-        button.image = createStatusIcon(text: isEnabled ? "V" : "E")
-    }
-
-    private func createStatusIcon(text: String) -> NSImage {
-        let width: CGFloat = 22
-        let height: CGFloat = 16
-        let image = NSImage(size: NSSize(width: width, height: height))
-
-        image.lockFocus()
-
-        // Background trắng bo góc nhẹ
-        let rect = NSRect(x: 0, y: 0, width: width, height: height)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
-        NSColor.white.setFill()
-        path.fill()
-
-        // Text transparent (dùng .clear với blend mode)
-        let font = NSFont.systemFont(ofSize: 13, weight: .bold)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.black
-        ]
-        let textSize = text.size(withAttributes: attrs)
-        let textRect = NSRect(
-            x: (width - textSize.width) / 2,
-            y: (height - textSize.height) / 2,
-            width: textSize.width,
-            height: textSize.height
-        )
-
-        // Vẽ text với blend mode để tạo transparent
-        NSGraphicsContext.current?.compositingOperation = .destinationOut
-        text.draw(in: textRect, withAttributes: attrs)
-
-        image.unlockFocus()
-        image.isTemplate = false
-        return image
-    }
-
-    // MARK: - Menu
-
-    private func setupMenu() {
-        let menu = NSMenu()
-
-        // Header with toggle
-        let header = NSMenuItem()
-        header.view = createHeaderView()
-        header.tag = 1
-        menu.addItem(header)
-        menu.addItem(.separator())
-
-        // Input methods
-        let telex = NSMenuItem(title: "Telex", action: #selector(selectTelex), keyEquivalent: "1")
-        telex.keyEquivalentModifierMask = .command
-        telex.target = self
-        telex.tag = 10
-        menu.addItem(telex)
-
-        let vni = NSMenuItem(title: "VNI", action: #selector(selectVNI), keyEquivalent: "2")
-        vni.keyEquivalentModifierMask = .command
-        vni.target = self
-        vni.tag = 11
-        menu.addItem(vni)
-        menu.addItem(.separator())
-
-        // About & Help
-        let about = NSMenuItem(title: "Giới thiệu \(AppMetadata.name)", action: #selector(showAbout), keyEquivalent: "")
-        about.target = self
-        menu.addItem(about)
-
-        let checkUpdate = NSMenuItem(title: "Kiểm tra cập nhật...", action: #selector(checkForUpdates), keyEquivalent: "u")
-        checkUpdate.keyEquivalentModifierMask = .command
-        checkUpdate.target = self
-        menu.addItem(checkUpdate)
-
-        let help = NSMenuItem(title: "Góp ý & Báo lỗi", action: #selector(openHelp), keyEquivalent: "")
-        help.target = self
-        menu.addItem(help)
-        menu.addItem(.separator())
-
-        // Quit
-        let quit = NSMenuItem(title: "Thoát", action: #selector(NSApp.terminate), keyEquivalent: "q")
-        menu.addItem(quit)
-
-        statusItem.menu = menu
-        updateMenu()
-    }
-
-    private func createHeaderView() -> NSView {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 36))
-
-        // App name
-        let name = NSTextField(labelWithString: AppMetadata.name)
-        name.font = .systemFont(ofSize: 13, weight: .bold)
-        name.frame = NSRect(x: 14, y: 10, width: 120, height: 16)
-        view.addSubview(name)
-
-        // Toggle using SwiftUI for custom tint color
-        if toggleState == nil {
-            toggleState = ToggleState(isOn: isEnabled)
-            toggleState?.onToggle = { [weak self] in self?.handleToggle() }
-        }
-        toggleState?.isOn = isEnabled
-        let toggleView = ToggleWrapperView(state: toggleState!)
-        let hostingView = NSHostingView(rootView: toggleView)
-        hostingView.frame = NSRect(x: 162, y: 4, width: 50, height: 28)
-        view.addSubview(hostingView)
-
-        return view
-    }
-
-    private func updateMenu() {
-        guard let menu = statusItem.menu else { return }
-        menu.item(withTag: 1)?.view = createHeaderView()
-        menu.item(withTag: 10)?.state = currentMethod == .telex ? .on : .off
-        menu.item(withTag: 11)?.state = currentMethod == .vni ? .on : .off
-    }
-
-    // MARK: - Actions
-
-    private func handleToggle() {
-        isEnabled = toggleState?.isOn ?? !isEnabled
-        UserDefaults.standard.set(isEnabled, forKey: SettingsKey.enabled)
-        RustBridge.setEnabled(isEnabled)
-        updateStatusButton()
-        // Update method checkmarks only, toggle animates itself
-        guard let menu = statusItem.menu else { return }
-        menu.item(withTag: 10)?.state = currentMethod == .telex ? .on : .off
-        menu.item(withTag: 11)?.state = currentMethod == .vni ? .on : .off
-    }
-
-    @objc private func selectTelex() { setMethod(.telex) }
-    @objc private func selectVNI() { setMethod(.vni) }
-
-    private func setMethod(_ mode: InputMode) {
-        currentMethod = mode
-        UserDefaults.standard.set(mode.rawValue, forKey: SettingsKey.method)
-        RustBridge.setMethod(mode.rawValue)
-        updateStatusButton()
-        updateMenu()
-    }
-
-    private func enableLaunchAtLogin() {
-        do {
-            try LaunchAtLoginManager.shared.enable()
-        } catch {
-            print("[LaunchAtLogin] Error: \(error)")
-        }
-    }
-
-    private func showOnboarding() {
-        if onboardingWindow == nil {
-            let view = OnboardingView()
-            let controller = NSHostingController(rootView: view)
-            onboardingWindow = NSWindow(contentViewController: controller)
-            onboardingWindow?.title = AppMetadata.name
-            onboardingWindow?.styleMask = [.titled, .closable]
-            onboardingWindow?.setContentSize(controller.view.fittingSize)
-            onboardingWindow?.center()
-        }
-        onboardingWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @objc private func showAbout() {
-        if aboutWindow == nil {
-            let controller = NSHostingController(rootView: AboutView())
-            let window = NSWindow(contentViewController: controller)
-            window.title = "Giới thiệu \(AppMetadata.name)"
-            window.styleMask = [.titled, .closable]
-            window.setContentSize(controller.view.fittingSize)
-            window.center()
-            window.isReleasedWhenClosed = false
-            aboutWindow = window
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        aboutWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    @objc private func openHelp() {
-        NSWorkspace.shared.open(URL(string: AppMetadata.issuesURL)!)
-    }
-
-    @objc private func checkForUpdates() {
-        if updateWindow == nil {
-            let controller = NSHostingController(rootView: UpdateView())
-            let window = NSWindow(contentViewController: controller)
-            window.title = "Kiểm tra cập nhật"
-            window.styleMask = [.titled, .closable]
-            window.setContentSize(controller.view.fittingSize)
-            window.center()
-            window.isReleasedWhenClosed = false
-            updateWindow = window
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        updateWindow?.makeKeyAndOrderFront(nil)
-
-        // Trigger update check when window opens
-        UpdateManager.shared.checkForUpdatesManually()
-    }
 }
 </file>
 
@@ -10817,6 +10818,85 @@ private func sendWithSelection(bs: Int, str: String) {
 extension Notification.Name {
     static let toggleVietnamese = Notification.Name("toggleVietnamese")
 }
+</file>
+
+<file path="Makefile">
+.PHONY: help all test format build clean setup install dmg release release-minor release-major
+
+# Auto-versioning
+TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
+VER := $(subst v,,$(TAG))
+NEXT_PATCH := $(shell echo $(VER) | awk -F. '{print $$1"."$$2"."$$3+1}')
+NEXT_MINOR := $(shell echo $(VER) | awk -F. '{print $$1"."$$2+1".0"}')
+NEXT_MAJOR := $(shell echo $(VER) | awk -F. '{print $$1+1".0.0"}')
+
+# Default target
+.DEFAULT_GOAL := help
+
+help: ## Show this help
+	@echo "⚡ Gõ Nhanh - Vietnamese Input Method Engine"
+	@echo ""
+	@echo "Usage: make [target]"
+	@echo ""
+	@echo "\033[1;34mDevelopment:\033[0m"
+	@grep -E '^(test|format|build|clean):.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1;32m%-12s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "\033[1;33mSetup & Install:\033[0m"
+	@grep -E '^(setup|install):.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1;32m%-12s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "\033[1;31mRelease:\033[0m"
+	@grep -E '^(release|release-minor|release-major|all):.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1;32m%-15s\033[0m %s\n", $$1, $$2}'
+
+all: test build ## Run test + build
+
+test: ## Run tests
+	@cd core && cargo test
+
+format: ## Format & lint
+	@cd core && cargo fmt && cargo clippy -- -D warnings
+
+build: format ## Build core + macos app
+	@./scripts/build-core.sh
+	@./scripts/build-macos.sh
+	@./scripts/build-windows.sh
+
+clean: ## Clean build artifacts
+	@cd core && cargo clean
+	@rm -rf platforms/macos/build
+
+setup: ## Setup dev environment
+	@./scripts/setup.sh
+
+install: build ## Install app to /Applications
+	@cp -r platforms/macos/build/Release/GoNhanh.app /Applications/
+
+dmg: build ## Create DMG installer
+	@./scripts/create-dmg-background.sh
+	@./scripts/create-dmg.sh
+
+release: ## Patch release (1.0.9 → 1.0.10)
+	@echo "$(TAG) → v$(NEXT_PATCH)"
+	@git add -A && git commit -m "release: v$(NEXT_PATCH)" --allow-empty
+	@./scripts/generate-release-notes.sh v$(NEXT_PATCH) > /tmp/release_notes.md
+	@git tag -a v$(NEXT_PATCH) -F /tmp/release_notes.md
+	@git push origin main v$(NEXT_PATCH)
+	@echo "→ https://github.com/khaphanspace/gonhanh.org/releases"
+
+release-minor: ## Minor release (1.0.9 → 1.1.0)
+	@echo "$(TAG) → v$(NEXT_MINOR)"
+	@git add -A && git commit -m "release: v$(NEXT_MINOR)" --allow-empty
+	@./scripts/generate-release-notes.sh v$(NEXT_MINOR) > /tmp/release_notes.md
+	@git tag -a v$(NEXT_MINOR) -F /tmp/release_notes.md
+	@git push origin main v$(NEXT_MINOR)
+	@echo "→ https://github.com/khaphanspace/gonhanh.org/releases"
+
+release-major: ## Major release (1.0.9 → 2.0.0)
+	@echo "$(TAG) → v$(NEXT_MAJOR)"
+	@git add -A && git commit -m "release: v$(NEXT_MAJOR)" --allow-empty
+	@./scripts/generate-release-notes.sh v$(NEXT_MAJOR) > /tmp/release_notes.md
+	@git tag -a v$(NEXT_MAJOR) -F /tmp/release_notes.md
+	@git push origin main v$(NEXT_MAJOR)
+	@echo "→ https://github.com/khaphanspace/gonhanh.org/releases"
 </file>
 
 <file path="core/tests/integration_test.rs">
@@ -12059,250 +12139,6 @@ $DIFF_CONTENT
 '
 </file>
 
-<file path="Makefile">
-.PHONY: help all test format build clean setup install dmg release release-minor release-major
-
-# Auto-versioning
-TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
-VER := $(subst v,,$(TAG))
-NEXT_PATCH := $(shell echo $(VER) | awk -F. '{print $$1"."$$2"."$$3+1}')
-NEXT_MINOR := $(shell echo $(VER) | awk -F. '{print $$1"."$$2+1".0"}')
-NEXT_MAJOR := $(shell echo $(VER) | awk -F. '{print $$1+1".0.0"}')
-
-# Default target
-.DEFAULT_GOAL := help
-
-help: ## Show this help
-	@echo "⚡ Gõ Nhanh - Vietnamese Input Method Engine"
-	@echo ""
-	@echo "Usage: make [target]"
-	@echo ""
-	@echo "\033[1;34mDevelopment:\033[0m"
-	@grep -E '^(test|format|build|clean):.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1;32m%-12s\033[0m %s\n", $$1, $$2}'
-	@echo ""
-	@echo "\033[1;33mSetup & Install:\033[0m"
-	@grep -E '^(setup|install):.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1;32m%-12s\033[0m %s\n", $$1, $$2}'
-	@echo ""
-	@echo "\033[1;31mRelease:\033[0m"
-	@grep -E '^(release|release-minor|release-major|all):.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1;32m%-15s\033[0m %s\n", $$1, $$2}'
-
-all: test build ## Run test + build
-
-test: ## Run tests
-	@cd core && cargo test
-
-format: ## Format & lint
-	@cd core && cargo fmt && cargo clippy -- -D warnings
-
-build: format ## Build core + macos app
-	@./scripts/build-core.sh
-	@./scripts/build-macos.sh
-	@./scripts/build-windows.sh
-
-clean: ## Clean build artifacts
-	@cd core && cargo clean
-	@rm -rf platforms/macos/build
-
-setup: ## Setup dev environment
-	@./scripts/setup.sh
-
-install: build ## Install app to /Applications
-	@cp -r platforms/macos/build/Release/GoNhanh.app /Applications/
-
-dmg: build ## Create DMG installer
-	@./scripts/create-dmg-background.sh
-	@./scripts/create-dmg.sh
-
-release: ## Patch release (1.0.9 → 1.0.10)
-	@echo "$(TAG) → v$(NEXT_PATCH)"
-	@git add -A && git commit -m "release: v$(NEXT_PATCH)" --allow-empty
-	@./scripts/generate-release-notes.sh v$(NEXT_PATCH) > /tmp/release_notes.md
-	@git tag -a v$(NEXT_PATCH) -F /tmp/release_notes.md
-	@git push origin main v$(NEXT_PATCH)
-	@echo "→ https://github.com/khaphanspace/gonhanh.org/releases"
-
-release-minor: ## Minor release (1.0.9 → 1.1.0)
-	@echo "$(TAG) → v$(NEXT_MINOR)"
-	@git add -A && git commit -m "release: v$(NEXT_MINOR)" --allow-empty
-	@./scripts/generate-release-notes.sh v$(NEXT_MINOR) > /tmp/release_notes.md
-	@git tag -a v$(NEXT_MINOR) -F /tmp/release_notes.md
-	@git push origin main v$(NEXT_MINOR)
-	@echo "→ https://github.com/khaphanspace/gonhanh.org/releases"
-
-release-major: ## Major release (1.0.9 → 2.0.0)
-	@echo "$(TAG) → v$(NEXT_MAJOR)"
-	@git add -A && git commit -m "release: v$(NEXT_MAJOR)" --allow-empty
-	@./scripts/generate-release-notes.sh v$(NEXT_MAJOR) > /tmp/release_notes.md
-	@git tag -a v$(NEXT_MAJOR) -F /tmp/release_notes.md
-	@git push origin main v$(NEXT_MAJOR)
-	@echo "→ https://github.com/khaphanspace/gonhanh.org/releases"
-</file>
-
-<file path="README.md">
-<p align="center">
-  <img src="assets/logo.png" alt="Gõ Nhanh Logo" width="128" height="128">
-</p>
-
-<h1 align="center">Gõ Nhanh</h1>
-
-<p align="center">
-  <img src="https://img.shields.io/github/downloads/khaphanspace/gonhanh.org/total?label=Downloads" />
-  <img src="https://img.shields.io/github/v/release/khaphanspace/gonhanh.org?label=Latest%20Release" />
-  <img src="https://img.shields.io/github/last-commit/khaphanspace/gonhanh.org" />
-</p>
-<p align="center">
-  <img src="https://img.shields.io/badge/Core-Rust-000000?logo=rust&logoColor=white" />
-  <img src="https://img.shields.io/badge/UI-SwiftUI-F05138?logo=swift&logoColor=white" />
-  <img src="https://img.shields.io/badge/Platform-macOS-000000?logo=apple&logoColor=white" />
-  <img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License: GPL-3.0">
-  <img src="https://github.com/khaphanspace/gonhanh.org/actions/workflows/ci.yml/badge.svg" alt="CI">
-</p>
-
-<p align="center"><strong>Gõ Nhanh</strong> - Bộ gõ tiếng Việt hiện đại, hiệu suất cao dành cho macOS. <br>
-Kết hợp sức mạnh của <strong>Rust</strong> (Core Engine) và <strong>SwiftUI</strong> (Native UI) để mang lại trải nghiệm gõ phím mượt mà, ổn định và bảo mật.</p>
-
-## 📥 Cài đặt
-
-| Nền tảng    | Trạng thái  |                                                   Tải xuống                                                   | Hướng dẫn                               |
-| :---------- | :---------: | :-----------------------------------------------------------------------------------------------------------: | :-------------------------------------- |
-| **macOS**   | ✅ Sẵn sàng | [📥 **Tải về GoNhanh.dmg**](https://github.com/khaphanspace/gonhanh.org/releases/latest/download/GoNhanh.dmg) | [Xem hướng dẫn](docs/install-macos.md)  |
-| **Windows** | 🗓️ Planned  |                                                       —                                                       | [Xem lộ trình](docs/install-windows.md) |
-| **Linux**   | 🗓️ Planned  |                                                       —                                                       | [Xem lộ trình](docs/install-linux.md)   |
-
-## 🚀 Tính năng nổi bật
-
-Gõ Nhanh hướng tới sự **Chuẩn hóa - Hiệu suất - Tiện dụng**:
-
-- **Core Engine (Rust)**: Xử lý dấu thông minh, độ trễ < 1ms, bộ nhớ cực thấp (~5MB).
-- **Native UI (SwiftUI)**: Giao diện tối giản trên Menu Bar, hỗ trợ Light/Dark mode.
-- **Hook cấp thấp**: Tương thích tốt với Terminal, IDE (VS Code, IntelliJ) và các ứng dụng đồ họa.
-- **Smart Defaults**: Cài là dùng, không cần cấu hình phức tạp.
-
-### Tính năng chi tiết
-
-#### 🧠 Core Engine
-
-- **Kiểu gõ**: Hỗ trợ đầy đủ **Telex** và **VNI**.
-- **Xử lý dấu thông minh**:
-  - Tự động đặt dấu đúng vị trí ngữ âm (Smart Tone Placement).
-  - Tùy chọn kiểu bỏ dấu: Cổ điển (`oà`) hoặc Hiện đại (`òa`).
-  - Kiểm tra tính hợp lệ của âm tiết (Phonology Check) để tránh gõ sai.
-- **Hiệu suất tối thượng**: Độ trễ xử lý < 1ms, bộ nhớ sử dụng cực thấp (~5MB), không gây nóng máy.
-
-#### 🖥️ Native App (macOS)
-
-- **Tối giản**: Ứng dụng chạy trên Menu Bar, không chiếm Dock, không làm phiền.
-- **Giao diện hiện đại**: Viết bằng **SwiftUI**, tự động thích ứng Light/Dark mode.
-- **Tiện ích**:
-  - Phím tắt chuyển đổi Anh/Việt toàn cục.
-  - Tự động khởi động cùng hệ thống.
-  - Cơ chế Hook bàn phím cấp thấp (CGEventTap) đảm bảo độ ổn định cao trên mọi ứng dụng (Terminal, Claude, IDE...).
-
-### Cam kết "Ba Không"
-
-- 🚫 **Không thu phí**: Miễn phí trọn đời, không có bản "Premium".
-- 🚫 **Không rác**: Không quảng cáo, không popup, không tính năng thừa thãi.
-- 🚫 **Không theo dõi**: Offline 100%, không thu thập dữ liệu, mã nguồn minh bạch.
-
-## Động lực
-
-Tôi (**Kha Phan**) bắt đầu dự án này vì các bộ gõ hiện tại thường xuyên gặp lỗi khi tôi làm việc với **Claude Code**.
-
-Từ nhu cầu giải quyết vấn đề cá nhân, Gõ Nhanh được phát triển thành một sản phẩm hoàn thiện dành tặng cộng đồng. Đây cũng là sự tiếp nối và kế thừa từ **UniKey**, **OpenKey** và **EVKey**.
-
-## So sánh
-
-|                |      Gõ Nhanh      |        EVKey        |    OpenKey     |    GoTiengViet    |     UniKey     |
-| :------------- | :----------------: | :-----------------: | :------------: | :---------------: | :------------: |
-| **Trạng thái** | 🟢 **Phát triển**  | 🔴 Ngừng phát triển |   🟡 Bảo trì   | 🟡 Ngừng cập nhật |   🟢 Ổn định   |
-| macOS          |         ✅         |         ✅          |       ✅       |        ✅         |       ❌       |
-| Windows        |     🗓️ Planned     |         ✅          |       ✅       |        ✅         |       ✅       |
-| Linux          |     🗓️ Planned     |         ❌          |       ✅       |        ❌         |  ✅ (Engine)   |
-| **Mã nguồn**   | ✅ **Open Source** |   ✅ Open Source    | ✅ Open Source |     🚫 Closed     | ✅ Core Engine |
-| Công nghệ      | **Rust + Native**  |      C++ + Qt       |    C++ + Qt    |    Obj-C / C++    |      C++       |
-| Bảng mã        |    **Unicode**     |     Đa bảng mã      |   Đa bảng mã   |    Đa bảng mã     |   Đa bảng mã   |
-| Chi phí        |    ✅ Miễn phí     |     ✅ Miễn phí     |  ✅ Miễn phí   |   Miễn phí/Pro    |  ✅ Miễn phí   |
-| Năm ra mắt     |        2025        |        2018         |      2019      |       2008        |      1999      |
-
-Nếu cần chuyển mã hay dùng bảng mã cũ, dùng UniKey/EVKey/OpenKey.
-
-### Tại sao chọn Gõ Nhanh?
-
-| Vấn đề                                     |    Bộ gõ khác / Mặc định     |         Gõ Nhanh         |
-| :----------------------------------------- | :--------------------------: | :----------------------: |
-| **Dính chữ Chrome/Edge** (`aa` → `aâ`)     | ⚠️ Tắt autocomplete thủ công |      ✅ Tự động fix      |
-| **Lặp chữ Google Docs** (`được` → `đđược`) |  ⚠️ Bật "Sửa lỗi" thủ công   |      ✅ Tự động fix      |
-| **Mất dấu Excel** (`trường` → `trương`)    |       ⚠️ Không ổn định       |      ✅ Tự động fix      |
-| **Nhảy chữ Terminal/CLI**                  |     ❌ Không hỗ trợ tốt      |    ✅ Smart detection    |
-| **Hộp đen che chữ (macOS)**                |    ❌ Che mất nội dung gõ    |     ✅ Edit-in-place     |
-| **Gạch chân khó chịu (macOS)**             |       ❌ Luôn hiển thị       |    ✅ Không gạch chân    |
-| **Lỗi lặp chữ Discord (Windows)**          |     ❌ Thường xuyên gặp      |  ✅ Fix triệt để (plan)  |
-| **Xung đột phím tắt IDE**                  |     ⚠️ Cần map lại phím      |    ✅ Hook thông minh    |
-| **Chọn bảng mã**                           |  ⚠️ Nhiều lựa chọn gây rối   |   ✅ Mặc định Unicode    |
-| **Chọn kiểu gõ**                           |    ⚠️ Telex/VNI/VIQR/...     |    ✅ Telex hoặc VNI     |
-| **Cấu hình phức tạp**                      |       ⚠️ 10+ tùy chọn        |      ✅ Cài là dùng      |
-| **Chạy quyền Admin (Windows)**             |     ⚠️ Cần bật thủ công      |   🗓️ Tự động (planned)   |
-| **Quyền Accessibility (macOS)**            |    ⚠️ Hướng dẫn phức tạp     |    ✅ Prompt tự động     |
-| **Gõ trong Password field**                |  ❌ Bị chặn (Secure Input)   | ✅ Hoạt động bình thường |
-| **Khởi động cùng hệ thống**                |     ⚠️ Cấu hình thủ công     |     ✅ Mặc định bật      |
-| **Cập nhật phiên bản**                     |      ⚠️ Tải về thủ công      | 🗓️ Auto-update (planned) |
-
-Chi tiết các lỗi thường gặp ở các bộ gõ khác: [docs/common-issues.md](docs/common-issues.md)
-
-## Cách hoạt động
-
-Engine dựa trên ngữ âm học tiếng Việt thay vì bảng tra cứu:
-
-```
-Âm tiết = [Phụ âm đầu] + [Âm đệm] + Nguyên âm chính + [Âm cuối] + Thanh điệu
-```
-
-Thuật toán đặt dấu theo quy tắc ngữ âm. Hỗ trợ cả kiểu cũ (`hoà`) và kiểu mới (`hòa`).
-
-Chi tiết: [docs/vietnamese-language-system.md](docs/vietnamese-language-system.md)
-
-## Kiến trúc
-
-```
-┌────────────────────────────────────────────────────────┐
-│               Platform UI Layer (Native)               │
-│    ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
-│    │    macOS     │  │   Windows    │  │   Linux    │  │
-│    │   SwiftUI    │  │  WPF (Plan)  │  │ IBus/Fcitx │  │
-│    └──────┬───────┘  └──────┬───────┘  └──────┬─────┘  │
-└───────────┼─────────────────┼─────────────────┼────────┘
-            │           FFI Bridge (C ABI)      │
-┌───────────▼─────────────────▼─────────────────▼────────┐
-│                 Rust Core Library                      │
-│      (Engine, Logic, State, Phonology Rules)           │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  Input Processing Pipeline (Telex / VNI)         │  │
-│  └──────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
-```
-
-- **Platform UI**: Native code (Swift/C#/C++) sử dụng **Low-level Hook (CGEventTap)** để bắt sự kiện phím tầng hệ thống, đảm bảo độ trễ < 1ms và tương thích mọi ứng dụng.
-- **Rust Core**: Logic xử lý tiếng Việt dựa trên **thuật toán ngữ âm** (Phonology Engine) thay vì tra bảng, giúp xử lý dấu thông minh và chỉ tốn ~5MB bộ nhớ.
-- **FFI**: Giao tiếp giữa UI và Core thông qua C ABI, đảm bảo tính tương thích và tốc độ tối đa.
-
-## Tài liệu
-
-| Tài liệu                                                                 | Mô tả                                                          |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| [Hệ thống chữ viết & Phương pháp gõ](docs/vietnamese-language-system.md) | Cơ sở lý thuyết ngữ âm và quy tắc đặt dấu.                     |
-| [System Architecture](docs/system-architecture.md)                       | Kiến trúc hệ thống, FFI, và luồng dữ liệu.                     |
-| [Development Guide](docs/development.md)                                 | Hướng dẫn build, test, và đóng góp mã nguồn.                   |
-| [Các lỗi thường gặp](docs/common-issues.md)                              | Tổng hợp lỗi bộ gõ (Chrome, Word, Terminal) và cách khắc phục. |
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=khaphanspace/gonhanh.org&type=Timeline&legend=bottom-right)](https://www.star-history.com/#khaphanspace/gonhanh.org&type=Timeline&legend=bottom-right)
-
-## License
-
-Copyright © 2025 Gõ Nhanh Contributors. [GNU GPLv3](LICENSE).
-</file>
-
 <file path="core/src/engine/mod.rs">
 //! Vietnamese IME Engine
 //!
@@ -12998,6 +12834,150 @@ mod tests {
         telex(TELEX_COMPOUND);
     }
 }
+</file>
+
+<file path="README.md">
+<h1 align="center">
+  <img src="assets/logo.png" alt="Gõ Nhanh Logo" width="128" height="128"><br>
+  Gõ Nhanh
+</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/github/downloads/khaphanspace/gonhanh.org/total?label=Downloads" />
+  <img src="https://img.shields.io/github/v/release/khaphanspace/gonhanh.org?label=Latest%20Release" />
+  <img src="https://img.shields.io/github/last-commit/khaphanspace/gonhanh.org" />
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-macOS-000000?logo=apple&logoColor=white" />
+  <img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License: GPL-3.0">
+  <img src="https://github.com/khaphanspace/gonhanh.org/actions/workflows/ci.yml/badge.svg" alt="CI">
+</p>
+
+<p align="center">
+  <strong>Bộ gõ tiếng Việt miễn phí, nhanh, ổn định cho macOS.</strong><br>
+  Cài là dùng. Không quảng cáo. Không thu thập dữ liệu.
+</p>
+
+---
+
+## 📥 Tải về & Cài đặt
+
+| Nền tảng | Trạng thái | Tải xuống | Hướng dẫn |
+|:---------|:----------:|:---------:|:----------|
+| **macOS** | ✅ Sẵn sàng | [📥 **Tải GoNhanh.dmg**](https://github.com/khaphanspace/gonhanh.org/releases/latest/download/GoNhanh.dmg) | [Xem hướng dẫn](docs/install-macos.md) |
+| **Windows** | 🗓️ Sắp ra mắt | — | [Xem lộ trình](docs/install-windows.md) |
+| **Linux** | 🗓️ Sắp ra mắt | — | [Xem lộ trình](docs/install-linux.md) |
+
+---
+
+## ✨ Tính năng chính
+
+### Dành cho người dùng
+
+| Tính năng | Mô tả |
+|-----------|-------|
+| **Telex & VNI** | Chọn kiểu gõ quen thuộc của bạn |
+| **Đặt dấu thông minh** | Tự động đặt dấu đúng vị trí (`hoà` hoặc `hòa`) |
+| **Gõ tắt** | Tạo phím tắt riêng (`vn` → `Việt Nam`, `ko` → `không`) |
+| **Nhanh & Nhẹ** | Độ trễ <1ms, chỉ dùng ~5MB RAM |
+| **Hoạt động mọi nơi** | Terminal, VS Code, Chrome, Word, Excel... |
+| **Ctrl+Space** | Chuyển đổi Anh/Việt nhanh chóng |
+| **Tự khởi động** | Chạy cùng hệ thống, không cần bật thủ công |
+
+### Cam kết "Ba Không"
+
+- 🚫 **Không thu phí** — Miễn phí mãi mãi, không bản Pro
+- 🚫 **Không quảng cáo** — Không popup, không làm phiền
+- 🚫 **Không theo dõi** — Offline 100%, mã nguồn mở
+
+---
+
+## 🆚 So sánh với bộ gõ khác
+
+| Vấn đề thường gặp | Bộ gõ khác | Gõ Nhanh |
+|:------------------|:----------:|:--------:|
+| Dính chữ trên Chrome/Edge | ⚠️ Phải tắt autocomplete | ✅ Tự động fix |
+| Lặp chữ trên Google Docs | ⚠️ Phải bật "Sửa lỗi" | ✅ Tự động fix |
+| Nhảy chữ trên Terminal | ❌ Không hỗ trợ tốt | ✅ Hoạt động tốt |
+| Gạch chân khó chịu (macOS) | ❌ Luôn hiển thị | ✅ Không gạch chân |
+| Cấu hình phức tạp | ⚠️ 10+ tùy chọn | ✅ Cài là dùng |
+| Gõ trong ô mật khẩu | ❌ Bị chặn | ✅ Hoạt động bình thường |
+
+> 💡 **Khi nào dùng bộ gõ khác?** Nếu bạn cần chuyển đổi bảng mã cũ (VNI, TCVN3...), hãy dùng UniKey/EVKey/OpenKey.
+
+Chi tiết: [Các lỗi thường gặp](docs/common-issues.md)
+
+---
+
+## 💡 Tại sao tôi tạo Gõ Nhanh?
+
+Tôi (**Kha Phan**) tạo Gõ Nhanh vì các bộ gõ hiện tại thường xuyên lỗi khi làm việc với **Claude Code** và Terminal.
+
+Từ nhu cầu cá nhân, Gõ Nhanh trở thành sản phẩm hoàn thiện dành tặng cộng đồng — kế thừa tinh thần của **UniKey**, **OpenKey** và **EVKey**.
+
+---
+
+## 🔧 Dành cho Developer
+
+<details>
+<summary><strong>Kiến trúc hệ thống</strong></summary>
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  macOS App (SwiftUI)                                    │
+│  Menu Bar UI + CGEventTap (keyboard hook)               │
+└────────────────────────┬────────────────────────────────┘
+                         │ FFI (C ABI)
+┌────────────────────────▼────────────────────────────────┐
+│  Rust Core Engine                                       │
+│  • Telex/VNI input processing                           │
+│  • 5 validation rules (kiểm tra âm tiết hợp lệ)         │
+│  • 7-stage pipeline (xử lý từng keystroke)              │
+│  • <0.1ms latency, ~5MB RAM                             │
+└─────────────────────────────────────────────────────────┘
+```
+
+</details>
+
+<details>
+<summary><strong>Build & Test</strong></summary>
+
+```bash
+# Setup (chạy 1 lần)
+./scripts/setup.sh
+
+# Development
+make test      # Chạy 160+ tests
+make format    # Format + lint
+make build     # Build full app
+make install   # Copy vào /Applications
+```
+
+</details>
+
+<details>
+<summary><strong>Tài liệu kỹ thuật</strong></summary>
+
+| Tài liệu | Mô tả |
+|----------|-------|
+| [Kiến trúc hệ thống](docs/system-architecture.md) | FFI, luồng dữ liệu, app compatibility |
+| [Validation](docs/validation-algorithm.md) | 5 quy tắc kiểm tra âm tiết |
+| [Ngữ âm tiếng Việt](docs/vietnamese-language-system.md) | Cơ sở lý thuyết |
+| [Hướng dẫn phát triển](docs/development.md) | Build, test, contribute |
+
+</details>
+
+---
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=khaphanspace/gonhanh.org&type=Timeline&legend=bottom-right)](https://www.star-history.com/#khaphanspace/gonhanh.org&type=Timeline&legend=bottom-right)
+
+---
+
+## 📄 License
+
+Copyright © 2025 Gõ Nhanh Contributors. [GNU GPLv3](LICENSE).
 </file>
 
 </files>
