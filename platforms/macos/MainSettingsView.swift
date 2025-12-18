@@ -552,12 +552,18 @@ struct SettingsPageView: View {
                 SettingsToggleRow("Bộ gõ tiếng Việt", isOn: $appState.isEnabled)
                 Divider().padding(.leading, 12)
                 inputMethodRow
-                Divider().padding(.leading, 12)
-                ShortcutRecorderRow(shortcut: $appState.toggleShortcut, isRecording: $isRecordingShortcut)
             }
             .cardBackground()
 
-            // Options section
+            // Toggle shortcut section
+            VStack(spacing: 0) {
+                ShortcutRecorderRow(shortcut: $appState.toggleShortcut,
+                                    isRecording: $isRecordingShortcut,
+                                    subtitle: "Nhấn để thay đổi phím tắt bật/tắt bộ gõ")
+            }
+            .cardBackground()
+
+            // Smart mode section
             VStack(spacing: 0) {
                 SettingsToggleRow("Chuyển chế độ thông minh",
                                   subtitle: "Tự động nhớ trạng thái Anh/Việt cho từng ứng dụng",
@@ -569,8 +575,11 @@ struct SettingsPageView: View {
                                       subtitle: "Gõ 'w' đầu từ sẽ thành 'ư'",
                                       isOn: $appState.autoWShortcut)
                 }
+            }
+            .cardBackground()
 
-                Divider().padding(.leading, 12)
+            // Shortcuts section
+            VStack(spacing: 0) {
                 shortcutsRow
             }
             .cardBackground()
@@ -803,6 +812,7 @@ private let systemShortcuts: Set<String> = [
 struct ShortcutRecorderRow: View {
     @Binding var shortcut: KeyboardShortcut
     @Binding var isRecording: Bool
+    var subtitle: String? = nil
     @State private var hovered = false
     @State private var recordedObserver: NSObjectProtocol?
     @State private var cancelledObserver: NSObjectProtocol?
@@ -812,7 +822,12 @@ struct ShortcutRecorderRow: View {
 
     var body: some View {
         HStack {
-            Text("Phím tắt bật/tắt").font(.system(size: 13))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Phím tắt bật/tắt").font(.system(size: 13))
+                if let subtitle = subtitle {
+                    Text(subtitle).font(.system(size: 11)).foregroundColor(Color(NSColor.secondaryLabelColor))
+                }
+            }
             Spacer()
             shortcutDisplay
         }
