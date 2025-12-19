@@ -174,6 +174,9 @@ struct KeyboardShortcut: Codable, Equatable {
             UserDefaults.standard.set(data, forKey: SettingsKey.toggleShortcut)
         }
     }
+
+    /// Check if this shortcut is modifier-only (no character key)
+    var isModifierOnly: Bool { keyCode == 0xFFFF }
 }
 
 // MARK: - Input Mode

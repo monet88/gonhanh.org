@@ -389,7 +389,8 @@ private let kModifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskSh
 private var wasModifierShortcutPressed = false
 private var currentShortcut = KeyboardShortcut.load()
 private var isRecordingShortcut = false
-private var recordingModifiers: CGEventFlags = []
+private var recordingModifiers: CGEventFlags = []      // Current modifiers being held
+private var peakRecordingModifiers: CGEventFlags = []  // Peak modifiers during recording
 private var shortcutObserver: NSObjectProtocol?
 
 // MARK: - Word Restore Support
@@ -505,8 +506,17 @@ private extension CGEventFlags {
 
 // MARK: - Shortcut Recording
 
-func startShortcutRecording() { isRecordingShortcut = true; recordingModifiers = [] }
-func stopShortcutRecording() { isRecordingShortcut = false; recordingModifiers = [] }
+func startShortcutRecording() {
+    isRecordingShortcut = true
+    recordingModifiers = []
+    peakRecordingModifiers = []
+}
+
+func stopShortcutRecording() {
+    isRecordingShortcut = false
+    recordingModifiers = []
+    peakRecordingModifiers = []
+}
 
 func setupShortcutObserver() {
     shortcutObserver = NotificationCenter.default.addObserver(forName: .shortcutChanged, object: nil, queue: .main) { _ in
@@ -552,19 +562,24 @@ private func keyboardCallback(
             return nil
         }
 
-        // Modifier changes: track or save modifier-only shortcut on release
+        // Modifier changes: track peak modifiers and save on full release
         if type == .flagsChanged {
-            if mods.isEmpty && recordingModifiers.modifierCount >= 2 {
-                let captured = KeyboardShortcut(keyCode: 0xFFFF, modifiers: recordingModifiers.rawValue)
+            if mods.isEmpty && peakRecordingModifiers.modifierCount >= 2 {
+                // All modifiers released - save using peak modifiers (requires 2+ modifiers)
+                let captured = KeyboardShortcut(keyCode: 0xFFFF, modifiers: peakRecordingModifiers.rawValue)
                 stopShortcutRecording()
                 DispatchQueue.main.async { NotificationCenter.default.post(name: .shortcutRecorded, object: captured) }
             } else {
                 recordingModifiers = mods
+                // Track peak: update if current has more modifiers
+                if mods.modifierCount > peakRecordingModifiers.modifierCount {
+                    peakRecordingModifiers = mods
+                }
             }
             return Unmanaged.passUnretained(event)
         }
 
-        // Key + modifiers: save shortcut (e.g., Ctrl+Shift+N)
+        // Key + modifier: save shortcut (e.g., Ctrl+N, Cmd+Shift+N)
         if type == .keyDown && !mods.isEmpty {
             let captured = KeyboardShortcut(keyCode: keyCode, modifiers: mods.rawValue)
             stopShortcutRecording()

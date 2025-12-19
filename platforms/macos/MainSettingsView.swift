@@ -566,8 +566,7 @@ struct SettingsPageView: View {
             // Toggle shortcut section
             VStack(spacing: 0) {
                 ShortcutRecorderRow(shortcut: $appState.toggleShortcut,
-                                    isRecording: $isRecordingShortcut,
-                                    subtitle: "Nhấn để thay đổi phím tắt bật/tắt bộ gõ")
+                                    isRecording: $isRecordingShortcut)
             }
             .cardBackground()
 
@@ -813,7 +812,6 @@ private let systemShortcuts: Set<String> = [
 struct ShortcutRecorderRow: View {
     @Binding var shortcut: KeyboardShortcut
     @Binding var isRecording: Bool
-    var subtitle: String? = nil
     @State private var hovered = false
     @State private var recordedObserver: NSObjectProtocol?
     @State private var cancelledObserver: NSObjectProtocol?
@@ -825,9 +823,9 @@ struct ShortcutRecorderRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Phím tắt bật/tắt").font(.system(size: 13))
-                if let subtitle = subtitle {
-                    Text(subtitle).font(.system(size: 11)).foregroundColor(Color(NSColor.secondaryLabelColor))
-                }
+                Text("Nhấn để thay đổi (tối thiểu 2 phím, VD: ⌘⇧)")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(NSColor.secondaryLabelColor))
             }
             Spacer()
             shortcutDisplay
