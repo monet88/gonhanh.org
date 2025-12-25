@@ -49,7 +49,7 @@
 ### Testing
 - **Coverage**: Every module must have `#[cfg(test)] mod tests { }` and integration tests in `core/tests/`
 - **Parametrization**: Use `#[rstest]` for multiple test cases
-- **Integration**: `core/tests/` directory for full pipeline tests (160+ tests, 2100+ lines)
+- **Integration**: `core/tests/` directory for full pipeline tests (2100+ lines of test code)
 - **Test Files**:
   - `unit_test.rs` - Individual module tests
   - `typing_test.rs` - Full keystroke sequences (Telex + VNI)
@@ -305,7 +305,7 @@ pub extern "C" fn ime_key(key: u16, caps: bool, ctrl: bool) -> *mut Result { }
 - **MINOR**: New features, backward compatible
 - **PATCH**: Bug fixes only
 - **Release**: Tag with `v` prefix (e.g., `v1.2.3`)
-- **Current Version**: v1.0.21+ (macOS + Windows production-ready)
+- **Current Version**: v1.0.88 (macOS + Windows + Linux production-ready)
 
 ## Pull Request Guidelines
 
@@ -318,6 +318,6 @@ pub extern "C" fn ime_key(key: u16, caps: bool, ctrl: bool) -> *mut Result { }
 
 ---
 
-**Last Updated**: 2025-12-14
+**Last Updated**: 2025-12-24
 **Enforced By**: GitHub Actions CI (`ci.yml`)
-**Test Coverage**: 160+ integration tests across 5 test files in `core/tests/`
+**Test Coverage**: 2100+ lines of tests across integration and unit test files in `core/tests/`

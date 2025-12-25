@@ -3,30 +3,30 @@
 ## High-Level Architecture
 
 ```
-┌──────────────────────────────────────────┐   ┌──────────────────────────────────────────┐
-│         macOS Application                │   │      Windows Application                 │
-│                                          │   │                                          │
-│  ┌────────────────────────────────┐     │   │  ┌────────────────────────────────┐     │
-│  │     SwiftUI Menu Bar           │     │   │  │   WPF System Tray UI           │     │
-│  │  • Input method selector       │     │   │  │  • Input method selector       │     │
-│  │  • Enable/disable toggle       │     │   │  │  • Enable/disable toggle       │     │
-│  │  • Settings, About, Update     │     │   │  │  • Settings, About, Update     │     │
-│  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │
-│               │                          │   │               │                          │
-│  ┌────────────▼────────────────────┐     │   │  ┌────────────▼────────────────────┐     │
-│  │ CGEventTap Keyboard Hook        │     │   │  │ SetWindowsHookEx Keyboard Hook  │     │
-│  │ • Intercepts keyDown events     │     │   │  │ • Intercepts WH_KEYBOARD_LL     │     │
-│  │ • Smart text replacement        │     │   │  │ • SendInput for text            │     │
-│  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │
-│               │                          │   │               │                          │
-│  ┌────────────▼────────────────────┐     │   │  ┌────────────▼────────────────────┐     │
-│  │    RustBridge (FFI Layer)       │     │   │  │   RustBridge.cs (P/Invoke)     │     │
-│  │  • C ABI function calls         │     │   │  │  • P/Invoke DLL function calls  │     │
-│  │  • Pointer safety handling      │     │   │  │  • UTF-32 interop               │     │
-│  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │
-└───────────────┼──────────────────────────┘   └───────────────┼──────────────────────────┘
-                │                                               │
-                └───────────────────┬──────────────────────────┘
+┌──────────────────────────────────────────┐   ┌──────────────────────────────────────────┐   ┌──────────────────────────────────────────┐
+│         macOS Application                │   │      Windows Application                 │   │        Linux Application                 │
+│                                          │   │                                          │   │                                          │
+│  ┌────────────────────────────────┐     │   │  ┌────────────────────────────────┐     │   │  ┌────────────────────────────────┐     │
+│  │     SwiftUI Menu Bar           │     │   │  │   WPF System Tray UI           │     │   │  │       Fcitx5 Addon UI          │     │
+│  │  • Input method selector       │     │   │  │  • Input method selector       │     │   │  │  • Input method selector       │     │
+│  │  • Enable/disable toggle       │     │   │  │  • Enable/disable toggle       │     │   │  │  • Enable/disable toggle       │     │
+│  │  • Settings, About, Update     │     │   │  │  • Settings, About, Update     │     │   │  │  • CLI & Addon config         │     │
+│  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │
+│               │                          │   │               │                          │   │               │                          │
+│  ┌────────────▼────────────────────┐     │   │  ┌────────────▼────────────────────┐     │   │  ┌────────────▼────────────────────┐     │
+│  │ CGEventTap Keyboard Hook        │     │   │  │ WH_KEYBOARD_LL Keyboard Hook    │     │   │  │    Fcitx5 Input Engine         │     │
+│  │ • Intercepts keyDown events     │     │   │  │ • Intercepts events system-wide  │     │   │  │ • Intercepts X11/Wayland keys  │     │
+│  │ • Smart text replacement        │     │   │  │ • SendInput for text            │     │   │  │ • CommitString for text        │     │
+│  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │
+│               │                          │   │               │                          │   │               │                          │
+│  ┌────────────▼────────────────────┐     │   │  ┌────────────▼────────────────────┐     │   │  ┌────────────▼────────────────────┐     │
+│  │    RustBridge (FFI Layer)       │     │   │  │   RustBridge.cs (P/Invoke)     │     │   │  │    RustBridge.cpp (FFI)        │     │
+│  │  • C ABI function calls         │     │   │  │  • P/Invoke DLL function calls  │     │   │  │  • C ABI function calls         │     │
+│  │  • Pointer safety handling      │     │   │  │  • UTF-32 interop               │     │   │  │  • Memory management            │     │
+│  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │   │  └────────────┬────────────────────┘     │
+└───────────────┼──────────────────────────┘   └───────────────┼──────────────────────────┘   └───────────────┼──────────────────────────┘
+                │                                               │                                               │
+                └───────────────────┬──────────────────────────┴───────────────────────────────────────────────┘
                                     │
                          extern "C" / P/Invoke
                                     ↓
@@ -59,8 +59,9 @@
          │  1. Must have vowel                         │
          │  2. Valid initials only                     │
          │  3. All chars parsed                        │
-         │  4. Spelling rules (c/k/g restrictions)     │
-         │  5. Valid finals only                       │
+         │  4. Spelling rules (c/k/g/ng restrictions)     │
+         │  5. Valid final consonants only                       │
+         │  6. Valid vowel patterns (Inclusion)        │
          └─────────────────────────────────────────────┘
                             ↓
          ┌─────────────────────────────────────────────┐
@@ -68,7 +69,7 @@
          │  • Vowel table: 72 entries                  │
          │  • Character mappings                       │
          │  • Phonology constants                      │
-         └─────────────────────────────────────────────┘
+         │  └─────────────────────────────────────────────┘
                             ↓
          ┌─────────────────────────────────────────────┐
          │  Result Structure                           │
@@ -87,7 +88,7 @@
 User types: [a] then [s]
 
 Step 1: Key 'a' pressed
-  ├─ CGEventTap captures keyDown
+  ├─ captured by hook
   ├─ RustBridge.processKey(keyCode=0x00, caps=false, ctrl=false)
   ├─ Rust: ime_key() called
   ├─ Engine:
@@ -95,11 +96,11 @@ Step 1: Key 'a' pressed
   │  ├─ Validate: "a" is valid (vowel alone)
   │  ├─ No transform yet (single char, waiting for next)
   │  └─ Return Action::None (pass through)
-  ├─ Swift: No action, let 'a' appear naturally
+  ├─ Platform: No action, let 'a' appear naturally
   └─ Output: User sees 'a' typed
 
 Step 2: Key 's' pressed (sắc mark in Telex)
-  ├─ CGEventTap captures keyDown
+  ├─ captured by hook
   ├─ RustBridge.processKey(keyCode=0x01, caps=false, ctrl=false)
   ├─ Rust: ime_key() called
   ├─ Engine:
@@ -111,7 +112,7 @@ Step 2: Key 's' pressed (sắc mark in Telex)
   │  │    backspace: 1,  // Delete 'a'
   │  │    chars: ['á']   // Insert 'á'
   │  └─ }
-  ├─ Swift:
+  ├─ Platform:
   │  ├─ Send 1 backspace (delete 'a')
   │  ├─ Send 'á' (via Unicode keyboard event)
   │  └─ 's' keystroke consumed (not passed through)
@@ -135,7 +136,7 @@ Processing:
     ├─ Match found: "khong" → "không"
     └─ Return: backspace: 5, chars: ['k','h','ô','n','g']
 
-  Swift execution:
+Platform execution:
     ├─ Delete 5 chars (k, h, o, n, g)
     ├─ Insert 5 chars (k, h, ô, n, g)
     └─ No change visible but ô is now correct diacritic
@@ -184,8 +185,8 @@ void ime_free(ImeResult* result);
 ### Memory Ownership
 
 - **FFI Responsibility**: Rust engine allocates Result struct
-- **Caller Responsibility**: Swift must call `ime_free(result)` to deallocate
-- **Safety**: Use `defer { ime_free(ptr) }` to guarantee cleanup even on early return
+- **Caller Responsibility**: Platform bridge must call `ime_free(result)` to deallocate
+- **Safety**: Use `defer { ime_free(ptr) }` (Swift) or RAII to guarantee cleanup
 
 ## Platform Integration Details
 
@@ -440,7 +441,7 @@ return nil
 ```
 User types key
    ↓
-CGEventTap callback fires
+Keyboard hook callback fires
    ↓
 Extract keycode + modifier flags
    ↓
@@ -453,7 +454,7 @@ Call RustBridge.processKey()
    └─ Return (backspaceCount, chars) tuple
    ↓
 If transformation:
-   ├─ Send backspaces (CGEvent)
+   ├─ Send backspaces (CGEvent/SendInput/CommitString)
    ├─ Send Unicode replacement
    └─ Consume original key (return nil)
    ↓
@@ -467,30 +468,30 @@ Visible to user as transformed or original text
 ### Latency Budget
 | Component | Time | Notes |
 |-----------|------|-------|
-| CGEventTap callback | ~50μs | System kernel time |
+| Keyboard hook callback | ~50μs | System kernel time |
 | Rust ime_key() | ~100-200μs | Engine processing |
-| Swift RustBridge | ~50μs | FFI overhead + result conversion |
-| CGEvent sending | ~100-200μs | Posting to event tap |
+| Platform RustBridge | ~50μs | FFI overhead + result conversion |
+| Event posting | ~100-200μs | Posting to OS event queue |
 | **Total** | **~300-500μs** | <1ms requirement met |
 
 ### Memory Profile
 | Component | Size | Notes |
 |-----------|------|-------|
 | Rust engine (static) | ~150KB | Tables + code |
-| Swift runtime | ~4.5MB | Standard SwiftUI overhead |
+| App runtime | ~4.5MB | UI framework overhead |
 | Buffer (64 chars) | ~200B | Circular buffer per engine instance |
 | **Total** | **~5MB** | Matches requirement |
 
 ### Scalability
 - **Multi-user**: App per user, each runs own engine instance
 - **Concurrent**: Mutex-protected ENGINE global (thread-safe)
-- **Continuous**: No memory leaks (tested with 160+ tests)
+- **Continuous**: No memory leaks (tested with 2100+ lines of tests)
 - **No limits**: Can type indefinitely without performance degradation
 
 ---
 
-**Last Updated**: 2025-12-14
+**Last Updated**: 2025-12-24
 **Architecture Version**: 2.0 (Validation-First, Cross-Platform)
-**Platforms**: macOS (v1.0.21+, CGEventTap), Windows (production, SetWindowsHookEx), Linux (beta, Fcitx5)
+**Platforms**: macOS (v1.0.88), Windows (v1.0.88), Linux (v1.0.88)
 **Diagram Format**: ASCII (compatible with all documentation viewers)
-**Codebase Metrics**: 99,444 tokens, 380,026 chars, 78 files (per repomix analysis)
+**Codebase Metrics**: 363,703 tokens (per repomix analysis)

@@ -15,7 +15,7 @@ public partial class SettingsPopup : Window
     private readonly SettingsService _settings;
     private bool _isInitializing = true;
 
-    public event Action<InputMethod>? OnMethodChanged;
+    public event Action<Core.InputMethod>? OnMethodChanged;
     public event Action<bool>? OnModernToneChanged;
     public event Action<bool>? OnShortcutChanged;
     public event Action<bool>? OnAutoStartChanged;
@@ -51,7 +51,7 @@ public partial class SettingsPopup : Window
         Close();
     }
 
-    protected override void OnKeyDown(KeyEventArgs e)
+    protected override void OnKeyDown(System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
             Close();
@@ -61,7 +61,7 @@ public partial class SettingsPopup : Window
     private void MethodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_isInitializing) return;
-        var method = (InputMethod)MethodCombo.SelectedIndex;
+        var method = (Core.InputMethod)MethodCombo.SelectedIndex;
         OnMethodChanged?.Invoke(method);
     }
 

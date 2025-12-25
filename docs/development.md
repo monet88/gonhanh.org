@@ -69,20 +69,9 @@ gonhanh.org/
 │       └── edge_cases_test.rs  # Boundary conditions (15+ tests)
 │
 ├── platforms/
-│   ├── linux/
-│   │   └── .keep               # Linux stub (future)
-│   ├── macos/                  # macOS SwiftUI app (765 lines)
-│   │   ├── App.swift           # Entry point (28 lines)
-│   │   ├── MenuBar.swift       # System tray (192 lines)
-│   │   ├── SettingsView.swift  # Settings UI (102 lines)
-│   │   ├── RustBridge.swift    # FFI bridge (443 lines)
-│   │   ├── Info.plist          # App info
-│   │   ├── GoNhanh.entitlements# App entitlements
-│   │   └── GoNhanh.xcodeproj/  # Xcode project
-│   │       ├── project.pbxproj # Build configuration
-│   │       └── xcshareddata/   # Shared settings
-│   └── windows/
-│       └── .keep               # Windows stub (future)
+│   ├── linux/                  # Production: Fcitx5 addon
+│   ├── macos/                  # Production: SwiftUI app
+│   └── windows/                # Production: WPF/.NET 8 app
 │
 ├── scripts/                     # Build automation
 │   ├── setup.sh                # Install Rust targets
@@ -225,7 +214,8 @@ git commit -m "feat: add new feature"
 | **Sentences**   | `sentence_test.rs`      | 20+   | Multi-word typing sequences                |
 | **Behavior**    | `behavior_test.rs`      | 20+   | User interactions (backspace, corrections) |
 | **Real Issues** | `common_issues_test.rs` | 15+   | Chrome autocomplete, Excel tone loss       |
-| **Edge Cases**  | `edge_cases_test.rs`    | 15+   | Boundary conditions, buffer limits         |
+| **Integration** | `integration_test.rs`   | 35+   | End-to-end keystroke→output tests          |
+| **Paragraph**   | `paragraph_test.rs`     | 15+   | Multi-word paragraph typing tests          |
 
 ### Running Tests
 

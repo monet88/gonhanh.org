@@ -1,16 +1,26 @@
 # Gõ Nhanh trên Windows
 
-> **Coming Soon** - Đang phát triển
+> ✅ **Sẵn sàng** - Phiên bản chính thức cho Windows 10/11
 
 ---
 
-## Tính năng dự kiến
+## Tính năng
 
-- Gõ tiếng Việt Telex/VNI
+- Gõ tiếng Việt Telex/VNI (Chuẩn Unicode)
 - Gõ tắt tùy chỉnh
-- Danh sách app ngoại lệ
+- Tự động khôi phục tiếng Anh thông minh
 - System tray menu
 - Tự khởi động cùng Windows
+- < 1ms độ trễ gõ phím
+- Hoàn toàn offline, không thu thập dữ liệu
+
+---
+
+## Cài đặt
+
+1. Tải về file `.zip` từ [GitHub Releases](https://github.com/khaphanspace/gonhanh.org/releases/latest)
+2. Giải nén và chạy file `GoNhanh.exe`
+3. Cấp quyền nếu Windows SmartScreen yêu cầu
 
 ---
 

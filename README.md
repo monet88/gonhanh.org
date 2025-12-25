@@ -40,8 +40,8 @@ brew install --cask gonhanh
 | Nền tảng | Trạng thái | Tải xuống | Hướng dẫn |
 |:--------:|:----------:|:---------:|:----------|
 | **macOS** | ✅ Sẵn sàng | [📥 Tải GoNhanh.dmg](https://github.com/khaphanspace/gonhanh.org/releases/latest/download/GoNhanh.dmg) | [Xem hướng dẫn](docs/install-macos.md) |
-| **Linux** | 🧪 Beta | — | [Xem hướng dẫn](docs/install-linux.md) |
-| **Windows** | 🧪 Beta | — | [Xem hướng dẫn](docs/install-windows.md) |
+| **Linux** | ✅ Sẵn sàng | [📥 Tải về](https://github.com/khaphanspace/gonhanh.org/releases/latest) | [Xem hướng dẫn](docs/install-linux.md) |
+| **Windows** | ✅ Sẵn sàng | [📥 Tải về](https://github.com/khaphanspace/gonhanh.org/releases/latest) | [Xem hướng dẫn](docs/install-windows.md) |
 
 <details>
 <summary><strong>⚠️ macOS: App không mở được?</strong></summary>
@@ -79,7 +79,7 @@ Sau đó: **System Settings → Privacy & Security → Accessibility → Bật G
 - ✂️ **Gõ tắt** — `vn` → `Việt Nam`, `ko` → `không`
 - 🔌 **Mọi app** — VS Code, Zed, Chrome, Notion, Terminal, Ghostty...
 - 🌗 **Dark/Light** — Theo hệ thống
-- 💻 **Đa nền tảng** — macOS, Linux, Windows (beta)
+- 💻 **Đa nền tảng** — macOS, Linux, Windows
 
 ### 🛡️ Cam kết "Ba Không"
 
@@ -163,7 +163,7 @@ Nếu các bạn thấy phần mềm hữu ích có thể [ủng hộ tôi tại
 | **macOS** | SwiftUI + CGEventTap + C FFI |
 | **Windows** | WPF/.NET 8 + SetWindowsHookEx + P/Invoke |
 | **Linux** | Fcitx5 + C++ + C FFI |
-| **Testing** | rstest + serial_test (600+ tests) |
+| **Testing** | rstest + serial_test (2100+ lines of tests) |
 | **CI/CD** | GitHub Actions + auto-versioning + AI-generated release notes |
 | **Dev Tools** | [Claude Code](https://claude.ai/code) with [ClaudeKit](https://claudekit.cc/) |
 
@@ -198,7 +198,7 @@ make install   # Copy vào /Applications
 | **Anti-over-engineering** | Không abstraction layer thừa. Inline code khi chỉ dùng 1 chỗ |
 | **Performance-first** | Target: <1ms latency, <10MB RAM. Không allocation trong hot path |
 | **Zero dependency** | Rust core chỉ dùng `std`. Không crates ngoài |
-| **Test-driven** | 600+ tests với coverage 100%. Bao gồm edge cases tiếng Việt và auto-restore tiếng Anh |
+| **Test-driven** | 2100+ lines of tests with coverage 100%. Bao gồm edge cases tiếng Việt và auto-restore tiếng Anh |
 | **Validation-first** | Reject invalid input sớm. Validate trước khi transform |
 | **Platform-agnostic core** | Core = pure Rust, no OS-specific code. UI layer riêng cho mỗi platform |
 
@@ -207,7 +207,7 @@ make install   # Copy vào /Applications
 | Tài liệu | Mô tả |
 |----------|-------|
 | [Kiến trúc hệ thống](docs/system-architecture.md) | FFI, luồng dữ liệu, app compatibility |
-| [Validation Algorithm](docs/validation-algorithm.md) | 5 quy tắc kiểm tra âm tiết |
+| [Validation Algorithm](docs/validation-algorithm.md) | 6 quy tắc kiểm tra âm tiết |
 | [Hệ thống chữ viết tiếng Việt & Phương pháp gõ](docs/vietnamese-language-system.md) | Cơ sở lý thuyết |
 | [Hướng dẫn phát triển](docs/development.md) | Build, test, contribute |
 
