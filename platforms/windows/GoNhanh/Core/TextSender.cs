@@ -25,6 +25,9 @@ public static class TextSender
 
     #region Structures
 
+    // INPUT struct for SendInput - must match Windows API exactly
+    // On 64-bit Windows, sizeof(INPUT) = 40 bytes
+    // The union must be the size of the largest member (MOUSEINPUT = 32 bytes on 64-bit)
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
     {
@@ -32,7 +35,11 @@ public static class TextSender
         public INPUTUNION u;
     }
 
-    [StructLayout(LayoutKind.Explicit)]
+    // Union must be sized to match MOUSEINPUT (the largest variant)
+    // MOUSEINPUT: 4+4+4+4+4+8 = 28 bytes, padded to 32 bytes on 64-bit
+    // KEYBDINPUT: 2+2+4+4+8 = 20 bytes
+    // We use explicit layout with Size to ensure correct sizing
+    [StructLayout(LayoutKind.Explicit, Size = 32)]
     private struct INPUTUNION
     {
         [FieldOffset(0)] public KEYBDINPUT ki;
