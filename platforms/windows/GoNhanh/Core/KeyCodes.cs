@@ -58,6 +58,14 @@ public static class KeyCodes
     public const ushort VK_ESCAPE = 0x1B;
     public const ushort VK_SPACE = 0x20;
 
+    // Left/Right modifier keys (for hotkey detection)
+    public const ushort VK_LSHIFT = 0xA0;
+    public const ushort VK_RSHIFT = 0xA1;
+    public const ushort VK_LCONTROL = 0xA2;
+    public const ushort VK_RCONTROL = 0xA3;
+    public const ushort VK_LMENU = 0xA4;     // Left Alt
+    public const ushort VK_RMENU = 0xA5;     // Right Alt
+
     // Punctuation (US keyboard layout)
     public const ushort VK_OEM_1 = 0xBA;     // ;:
     public const ushort VK_OEM_PLUS = 0xBB;  // =+

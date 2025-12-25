@@ -17,6 +17,9 @@ public class TrayIcon : IDisposable
     private ToolStripMenuItem? _headerItem;
     private ToolStripMenuItem? _telexItem;
     private ToolStripMenuItem? _vniItem;
+    private ToolStripMenuItem? _modernToneItem;
+    private ToolStripMenuItem? _shortcutItem;
+    private ToolStripMenuItem? _updateItem;
     private bool _isEnabled = true;
     private InputMethod _currentMethod = InputMethod.Telex;
     private bool _disposed;
@@ -26,6 +29,9 @@ public class TrayIcon : IDisposable
     public event Action? OnExitRequested;
     public event Action<InputMethod>? OnMethodChanged;
     public event Action<bool>? OnEnabledChanged;
+    public event Action<bool>? OnModernToneChanged;
+    public event Action<bool>? OnShortcutChanged;
+    public event Action? OnSettingsRequested;
 
     #endregion
 
@@ -61,6 +67,19 @@ public class TrayIcon : IDisposable
 
         _contextMenu.Items.Add(new ToolStripSeparator());
 
+        // Settings toggles
+        _modernToneItem = new ToolStripMenuItem("Kiểu gõ mới (oà)");
+        _modernToneItem.CheckOnClick = true;
+        _modernToneItem.Click += (s, e) => OnModernToneChanged?.Invoke(_modernToneItem.Checked);
+        _contextMenu.Items.Add(_modernToneItem);
+
+        _shortcutItem = new ToolStripMenuItem("Bật viết tắt");
+        _shortcutItem.CheckOnClick = true;
+        _shortcutItem.Click += (s, e) => OnShortcutChanged?.Invoke(_shortcutItem.Checked);
+        _contextMenu.Items.Add(_shortcutItem);
+
+        _contextMenu.Items.Add(new ToolStripSeparator());
+
         // Toggle enabled
         var toggleItem = new ToolStripMenuItem("Bật/Tắt");
         toggleItem.ShortcutKeys = Keys.Control | Keys.D0;
@@ -68,6 +87,11 @@ public class TrayIcon : IDisposable
         _contextMenu.Items.Add(toggleItem);
 
         _contextMenu.Items.Add(new ToolStripSeparator());
+
+        // Settings (Cài đặt)
+        var settingsItem = new ToolStripMenuItem("Cài đặt");
+        settingsItem.Click += (s, e) => OnSettingsRequested?.Invoke();
+        _contextMenu.Items.Add(settingsItem);
 
         // About (like macOS "Giới thiệu GoNhanh")
         var aboutItem = new ToolStripMenuItem($"Giới thiệu {AppMetadata.Name}");
@@ -125,6 +149,52 @@ public class TrayIcon : IDisposable
 
         UpdateIcon(isEnabled);
         UpdateTooltip(method, isEnabled);
+    }
+
+    /// <summary>
+    /// Update settings toggle states
+    /// </summary>
+    public void UpdateToggles(bool modernTone, bool shortcutEnabled)
+    {
+        if (_modernToneItem != null)
+            _modernToneItem.Checked = modernTone;
+        if (_shortcutItem != null)
+            _shortcutItem.Checked = shortcutEnabled;
+    }
+
+    /// <summary>
+    /// Show update available menu item
+    /// </summary>
+    public void ShowUpdateItem(string version, string url)
+    {
+        if (_contextMenu == null) return;
+
+        // Remove existing update item if any
+        if (_updateItem != null)
+        {
+            _contextMenu.Items.Remove(_updateItem);
+        }
+
+        // Create new update item
+        _updateItem = new ToolStripMenuItem($"Có bản mới v{version} →");
+        _updateItem.ForeColor = System.Drawing.Color.FromArgb(37, 99, 235); // Blue
+        _updateItem.Click += (s, e) => OpenUrl(url);
+
+        // Insert after header (index 2, after header and separator)
+        _contextMenu.Items.Insert(2, _updateItem);
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch { }
     }
 
     private void SetMethod(InputMethod method)

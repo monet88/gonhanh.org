@@ -15,6 +15,7 @@ public partial class App : System.Windows.Application
     private TrayIcon? _trayIcon;
     private KeyboardHook? _keyboardHook;
     private readonly SettingsService _settings = new();
+    private readonly UpdateService _updateService = new();
     private System.Threading.Mutex? _mutex;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -38,6 +39,7 @@ public partial class App : System.Windows.Application
         // Initialize keyboard hook
         _keyboardHook = new KeyboardHook();
         _keyboardHook.KeyPressed += OnKeyPressed;
+        _keyboardHook.HotkeyToggle += OnHotkeyToggle;
         _keyboardHook.Start();
 
         // Initialize system tray
@@ -45,13 +47,20 @@ public partial class App : System.Windows.Application
         _trayIcon.OnExitRequested += ExitApplication;
         _trayIcon.OnMethodChanged += ChangeInputMethod;
         _trayIcon.OnEnabledChanged += ToggleEnabled;
+        _trayIcon.OnModernToneChanged += ChangeModernTone;
+        _trayIcon.OnShortcutChanged += ChangeShortcutEnabled;
+        _trayIcon.OnSettingsRequested += ShowSettings;
         _trayIcon.Initialize(_settings.CurrentMethod, _settings.IsEnabled);
+        _trayIcon.UpdateToggles(_settings.UseModernTone, _settings.ShortcutEnabled);
 
         // Show onboarding if first run (like macOS)
         if (_settings.IsFirstRun)
         {
             ShowOnboarding();
         }
+
+        // Check for updates (async, fire and forget)
+        _ = CheckForUpdatesAsync();
     }
 
     private bool EnsureSingleInstance()
@@ -74,6 +83,20 @@ public partial class App : System.Windows.Application
         RustBridge.SetMethod(_settings.CurrentMethod);
         RustBridge.SetEnabled(_settings.IsEnabled);
         RustBridge.SetModernTone(_settings.UseModernTone);
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        await _updateService.CheckForUpdatesAsync();
+
+        if (_updateService.UpdateAvailable &&
+            _updateService.LatestVersion != null &&
+            _updateService.ReleaseUrl != null)
+        {
+            _trayIcon?.ShowUpdateItem(
+                _updateService.LatestVersion,
+                _updateService.ReleaseUrl);
+        }
     }
 
     private void OnKeyPressed(object? sender, KeyPressedEventArgs e)
@@ -119,6 +142,49 @@ public partial class App : System.Windows.Application
         _settings.IsEnabled = enabled;
         _settings.Save();
         RustBridge.SetEnabled(enabled);
+    }
+
+    private void OnHotkeyToggle(object? sender, EventArgs e)
+    {
+        _settings.IsEnabled = !_settings.IsEnabled;
+        _settings.Save();
+        RustBridge.SetEnabled(_settings.IsEnabled);
+        _trayIcon?.UpdateState(_settings.CurrentMethod, _settings.IsEnabled);
+    }
+
+    private void ChangeModernTone(bool modern)
+    {
+        _settings.UseModernTone = modern;
+        _settings.Save();
+        RustBridge.SetModernTone(modern);
+    }
+
+    private void ChangeShortcutEnabled(bool enabled)
+    {
+        _settings.ShortcutEnabled = enabled;
+        _settings.Save();
+        // Note: Shortcut toggle FFI not yet implemented in Rust core
+        // RustBridge.SetShortcutEnabled(enabled);
+    }
+
+    private void ChangeAutoStart(bool autoStart)
+    {
+        _settings.AutoStart = autoStart;
+        _settings.Save();
+    }
+
+    private void ShowSettings()
+    {
+        var popup = new SettingsPopup(_settings);
+        popup.OnMethodChanged += ChangeInputMethod;
+        popup.OnModernToneChanged += ChangeModernTone;
+        popup.OnShortcutChanged += ChangeShortcutEnabled;
+        popup.OnAutoStartChanged += ChangeAutoStart;
+        popup.ShowDialog();
+
+        // Update tray after popup closes
+        _trayIcon?.UpdateState(_settings.CurrentMethod, _settings.IsEnabled);
+        _trayIcon?.UpdateToggles(_settings.UseModernTone, _settings.ShortcutEnabled);
     }
 
     private void ExitApplication()

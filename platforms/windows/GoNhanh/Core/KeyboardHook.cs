@@ -13,6 +13,7 @@ public class KeyboardHook : IDisposable
 
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
+    private const int WM_KEYUP = 0x0101;
     private const int WM_SYSKEYDOWN = 0x0104;
     private const uint LLKHF_INJECTED = 0x10;
 
@@ -69,11 +70,17 @@ public class KeyboardHook : IDisposable
     // Identifier for our injected keys (to skip processing them)
     private static readonly IntPtr InjectedKeyMarker = new IntPtr(0x474E4820); // "GNH " in hex
 
+    // Ctrl+Shift hotkey detection
+    private bool _ctrlPressed;
+    private bool _shiftPressed;
+    private bool _otherKeyPressed;
+
     #endregion
 
     #region Events
 
     public event EventHandler<KeyPressedEventArgs>? KeyPressed;
+    public event EventHandler? HotkeyToggle;
 
     #endregion
 
@@ -127,8 +134,7 @@ public class KeyboardHook : IDisposable
             return CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
 
-        // Only process key down events
-        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
+        if (nCode >= 0)
         {
             var hookStruct = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
 
@@ -146,49 +152,87 @@ public class KeyboardHook : IDisposable
 
             ushort keyCode = (ushort)hookStruct.vkCode;
 
-            // Only process relevant keys for Vietnamese input
-            if (KeyCodes.IsRelevantKey(keyCode))
+            // Track Ctrl+Shift hotkey combo
+            if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
             {
-                bool shift = IsKeyDown(KeyCodes.VK_SHIFT);
-                bool capsLock = IsCapsLockOn();
-                bool ctrl = IsKeyDown(KeyCodes.VK_CONTROL);
-                bool alt = IsKeyDown(KeyCodes.VK_MENU);
-
-                // Skip if Ctrl or Alt is pressed (shortcuts)
-                if (ctrl || alt)
+                if (keyCode == KeyCodes.VK_CONTROL || keyCode == KeyCodes.VK_LCONTROL || keyCode == KeyCodes.VK_RCONTROL)
+                    _ctrlPressed = true;
+                else if (keyCode == KeyCodes.VK_SHIFT || keyCode == KeyCodes.VK_LSHIFT || keyCode == KeyCodes.VK_RSHIFT)
+                    _shiftPressed = true;
+                else
+                    _otherKeyPressed = true;
+            }
+            else if (wParam == (IntPtr)WM_KEYUP)
+            {
+                // Check if Ctrl+Shift combo released without other keys
+                if ((keyCode == KeyCodes.VK_CONTROL || keyCode == KeyCodes.VK_LCONTROL || keyCode == KeyCodes.VK_RCONTROL) ||
+                    (keyCode == KeyCodes.VK_SHIFT || keyCode == KeyCodes.VK_LSHIFT || keyCode == KeyCodes.VK_RSHIFT))
                 {
-                    // Clear buffer on Ctrl+key combinations
-                    if (ctrl)
+                    if (_ctrlPressed && _shiftPressed && !_otherKeyPressed)
+                    {
+                        // Fire hotkey toggle event
+                        HotkeyToggle?.Invoke(this, EventArgs.Empty);
+                    }
+
+                    // Reset tracking on modifier release
+                    if (keyCode == KeyCodes.VK_CONTROL || keyCode == KeyCodes.VK_LCONTROL || keyCode == KeyCodes.VK_RCONTROL)
+                        _ctrlPressed = false;
+                    if (keyCode == KeyCodes.VK_SHIFT || keyCode == KeyCodes.VK_LSHIFT || keyCode == KeyCodes.VK_RSHIFT)
+                        _shiftPressed = false;
+
+                    // Reset other key flag when all modifiers released
+                    if (!_ctrlPressed && !_shiftPressed)
+                        _otherKeyPressed = false;
+                }
+            }
+
+            // Only process key down events for IME
+            if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
+            {
+                // Only process relevant keys for Vietnamese input
+                if (KeyCodes.IsRelevantKey(keyCode))
+                {
+                    bool shift = IsKeyDown(KeyCodes.VK_SHIFT);
+                    bool capsLock = IsCapsLockOn();
+                    bool ctrl = IsKeyDown(KeyCodes.VK_CONTROL);
+                    bool alt = IsKeyDown(KeyCodes.VK_MENU);
+
+                    // Skip if Ctrl or Alt is pressed (shortcuts)
+                    if (ctrl || alt)
+                    {
+                        // Clear buffer on Ctrl+key combinations
+                        if (ctrl)
+                        {
+                            RustBridge.Clear();
+                        }
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
+                    }
+
+                    // Handle buffer-clearing keys
+                    if (KeyCodes.IsBufferClearKey(keyCode))
                     {
                         RustBridge.Clear();
+                        return CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
-                    return CallNextHookEx(_hookId, nCode, wParam, lParam);
-                }
 
-                // Handle buffer-clearing keys
-                if (KeyCodes.IsBufferClearKey(keyCode))
-                {
-                    RustBridge.Clear();
-                    return CallNextHookEx(_hookId, nCode, wParam, lParam);
-                }
+                    // Process the key through IME
+                    var args = new KeyPressedEventArgs(keyCode, shift, capsLock);
 
-                // Process the key through IME
-                var args = new KeyPressedEventArgs(keyCode, shift, capsLock);
+                    try
+                    {
+                        _isProcessing = true;
+                        KeyPressed?.Invoke(this, args);
+                    }
+                    finally
+                    {
+                        _isProcessing = false;
+                    }
 
-                try
-                {
-                    _isProcessing = true;
-                    KeyPressed?.Invoke(this, args);
-                }
-                finally
-                {
-                    _isProcessing = false;
-                }
-
-                // Block the original key if handled
-                if (args.Handled)
-                {
-                    return (IntPtr)1;
+                    // Block the original key if handled
+                    if (args.Handled)
+                    {
+                        return (IntPtr)1;
+                    }
                 }
             }
         }

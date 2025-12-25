@@ -20,6 +20,7 @@ public class SettingsService
     private const string KeyEnabled = "Enabled";
     private const string KeyFirstRun = "FirstRun";
     private const string KeyAutoStart = "AutoStart";
+    private const string KeyShortcutEnabled = "ShortcutEnabled";
 
     #endregion
 
@@ -30,6 +31,7 @@ public class SettingsService
     public bool IsEnabled { get; set; } = true;
     public bool IsFirstRun { get; set; } = true;
     public bool AutoStart { get; set; } = false;
+    public bool ShortcutEnabled { get; set; } = true;
 
     #endregion
 
@@ -55,6 +57,7 @@ public class SettingsService
             IsEnabled = ((int)(key.GetValue(KeyEnabled, 1) ?? 1)) == 1;
             IsFirstRun = ((int)(key.GetValue(KeyFirstRun, 1) ?? 1)) == 1;
             AutoStart = ((int)(key.GetValue(KeyAutoStart, 0) ?? 0)) == 1;
+            ShortcutEnabled = ((int)(key.GetValue(KeyShortcutEnabled, 1) ?? 1)) == 1;
         }
         catch (Exception ex)
         {
@@ -77,6 +80,7 @@ public class SettingsService
                 key.SetValue(KeyEnabled, IsEnabled ? 1 : 0, RegistryValueKind.DWord);
                 key.SetValue(KeyFirstRun, IsFirstRun ? 1 : 0, RegistryValueKind.DWord);
                 key.SetValue(KeyAutoStart, AutoStart ? 1 : 0, RegistryValueKind.DWord);
+                key.SetValue(KeyShortcutEnabled, ShortcutEnabled ? 1 : 0, RegistryValueKind.DWord);
             }
 
             // Update auto-start registry
@@ -126,6 +130,7 @@ public class SettingsService
         UseModernTone = true;
         IsEnabled = true;
         AutoStart = false;
+        ShortcutEnabled = true;
         Save();
     }
 
